@@ -1,0 +1,56 @@
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    container_name: workx-db
+    environment:
+      MSSQL_SA_PASSWORD: "${DB_PASSWORD:-WorkX@Password2026}"
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/mssql-tools18/bin/sqlcmd -S localhost -U SA -P '${DB_PASSWORD:-WorkX@Password2026}' -C -Q 'SELECT 1' -b || /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P '${DB_PASSWORD:-WorkX@Password2026}' -Q 'SELECT 1' -b",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 90s
+
+  be:
+    build:
+      context: ./BE
+      dockerfile: Dockerfile
+      cache_from:
+        - workx-be:latest
+    image: workx-be:latest
+    container_name: workx-be
+    environment:
+      ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Development}"
+      ConnectionStrings__DefaultConnection: >
+        Server=db,1433;Database=master;
+        User Id=SA;Password=${DB_PASSWORD:-WorkX@Password2026};
+        TrustServerCertificate=True;
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  fe:
+    build:
+      context: ./FE
+      dockerfile: Dockerfile
+      cache_from:
+        - workx-fe:latest
+      args:
+        VITE_API_URL: "${VITE_API_URL:-http://localhost:5000}"
+    image: workx-fe:latest
+    container_name: workx-fe
+    ports:
+      - "4200:80"
+    depends_on:
+      - be
