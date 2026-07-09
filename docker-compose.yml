@@ -9,6 +9,8 @@ services:
       MSSQL_PID: "Developer"
     ports:
       - "1433:1433"
+    volumes:
+      - workx-db-data:/var/opt/mssql
     healthcheck:
       test:
         [
@@ -54,3 +56,6 @@ services:
       - "4200:80"
     depends_on:
       - be
+
+volumes:
+  workx-db-data:
