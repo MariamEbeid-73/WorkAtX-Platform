@@ -46,10 +46,10 @@ services:
       dockerfile: Dockerfile
       cache_from:
         - workx-fe:latest
-      args:
-        VITE_API_URL: "${VITE_API_URL:-http://localhost:5000}"
     image: workx-fe:latest
     container_name: workx-fe
+    environment:
+      VITE_API_URL: "${VITE_API_URL:-http://localhost:5000}"
     ports:
       - "4200:80"
     depends_on:
