@@ -1,69 +1,48 @@
-/**
- * WorkX Design System — Central Theme Configuration
- *
- * This is the SINGLE SOURCE OF TRUTH for all visual tokens.
- * Every component, page, and style in the app must reference this file.
- * CSS custom properties in index.css mirror these values exactly.
- */
-
-// ─── Color Palette ───────────────────────────────────────────────────────────
+import { dark } from '@clerk/themes';
 
 export const colors = {
-  // Base backgrounds — obsidian dark system
   bg: {
-    base: '#080B14',       // Page background — near-black with blue undertone
-    surface: '#0E1220',    // Card / surface layer
-    elevated: '#141828',   // Elevated surface (modals, dropdowns)
-    overlay: '#1A2030',    // Overlay panels
+    base: '#080B14',
+    surface: '#0E1220',
+    elevated: '#141828',
+    overlay: '#1A2030',
   },
-
-  // Border system
   border: {
     subtle:  'rgba(255,255,255,0.06)',
     default: 'rgba(255,255,255,0.10)',
     strong:  'rgba(255,255,255,0.18)',
-    accent:  'rgba(139,92,246,0.40)',   // Purple tint border
+    accent:  'rgba(139,92,246,0.40)',
   },
-
-  // Primary brand — electric violet/purple gradient system
   primary: {
     50:  '#F5F3FF',
     100: '#EDE9FE',
     200: '#DDD6FE',
     300: '#C4B5FD',
     400: '#A78BFA',
-    500: '#8B5CF6',   // Core brand purple
+    500: '#8B5CF6',
     600: '#7C3AED',
     700: '#6D28D9',
     800: '#5B21B6',
     900: '#4C1D95',
   },
-
-  // Accent — cyan / teal for highlights
   accent: {
     400: '#22D3EE',
     500: '#06B6D4',
     600: '#0891B2',
   },
-
-  // Text hierarchy
   text: {
-    primary:   '#F8FAFC',   // Headings — near white
-    secondary: '#94A3B8',   // Body copy
-    tertiary:  '#64748B',   // Muted / captions
-    inverse:   '#080B14',   // Text on bright backgrounds
-    accent:    '#A78BFA',   // Highlighted / interactive text
+    primary:   '#F8FAFC',
+    secondary: '#94A3B8',
+    tertiary:  '#64748B',
+    inverse:   '#080B14',
+    accent:    '#A78BFA',
   },
-
-  // Semantic
   semantic: {
     success: '#10B981',
     warning: '#F59E0B',
     error:   '#EF4444',
     info:    '#3B82F6',
   },
-
-  // Gradients (expressed as CSS gradient strings)
   gradient: {
     brand:       'linear-gradient(135deg, #8B5CF6 0%, #06B6D4 100%)',
     brandSoft:   'linear-gradient(135deg, rgba(139,92,246,0.15) 0%, rgba(6,182,212,0.08) 100%)',
@@ -75,8 +54,6 @@ export const colors = {
     overlay:     'linear-gradient(180deg, rgba(8,11,20,0) 0%, rgba(8,11,20,0.9) 100%)',
   },
 } as const;
-
-// ─── Spacing Scale ────────────────────────────────────────────────────────────
 
 export const spacing = {
   px:  '1px',
@@ -104,8 +81,6 @@ export const spacing = {
   32:  '128px',
 } as const;
 
-// ─── Typography ───────────────────────────────────────────────────────────────
-
 export const typography = {
   fontFamily: {
     sans:    "'Inter', system-ui, -apple-system, sans-serif",
@@ -113,17 +88,17 @@ export const typography = {
     mono:    "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
   },
   fontSize: {
-    xs:   '0.75rem',    // 12px
-    sm:   '0.875rem',   // 14px
-    base: '1rem',       // 16px
-    lg:   '1.125rem',   // 18px
-    xl:   '1.25rem',    // 20px
-    '2xl': '1.5rem',    // 24px
-    '3xl': '1.875rem',  // 30px
-    '4xl': '2.25rem',   // 36px
-    '5xl': '3rem',      // 48px
-    '6xl': '3.75rem',   // 60px
-    '7xl': '4.5rem',    // 72px
+    xs:   '0.75rem',
+    sm:   '0.875rem',
+    base: '1rem',
+    lg:   '1.125rem',
+    xl:   '1.25rem',
+    '2xl': '1.5rem',
+    '3xl': '1.875rem',
+    '4xl': '2.25rem',
+    '5xl': '3rem',
+    '6xl': '3.75rem',
+    '7xl': '4.5rem',
   },
   fontWeight: {
     normal:    '400',
@@ -147,8 +122,6 @@ export const typography = {
   },
 } as const;
 
-// ─── Border Radius ────────────────────────────────────────────────────────────
-
 export const radius = {
   sm:   '6px',
   md:   '10px',
@@ -158,8 +131,6 @@ export const radius = {
   '3xl': '32px',
   full: '9999px',
 } as const;
-
-// ─── Shadows ──────────────────────────────────────────────────────────────────
 
 export const shadows = {
   sm:      '0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3)',
@@ -171,8 +142,6 @@ export const shadows = {
   inner:   'inset 0 1px 0 rgba(255,255,255,0.06)',
   card:    '0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)',
 } as const;
-
-// ─── Animation / Transition ───────────────────────────────────────────────────
 
 export const animation = {
   duration: {
@@ -190,32 +159,28 @@ export const animation = {
   },
 } as const;
 
-// ─── Glassmorphism Presets ────────────────────────────────────────────────────
-
 export const glass = {
   subtle: {
-    background:   'rgba(255,255,255,0.03)',
+    background:     'rgba(255,255,255,0.03)',
     backdropFilter: 'blur(8px)',
-    border:       '1px solid rgba(255,255,255,0.07)',
+    border:         '1px solid rgba(255,255,255,0.07)',
   },
   medium: {
-    background:   'rgba(255,255,255,0.06)',
+    background:     'rgba(255,255,255,0.06)',
     backdropFilter: 'blur(16px)',
-    border:       '1px solid rgba(255,255,255,0.10)',
+    border:         '1px solid rgba(255,255,255,0.10)',
   },
   strong: {
-    background:   'rgba(255,255,255,0.10)',
+    background:     'rgba(255,255,255,0.10)',
     backdropFilter: 'blur(24px)',
-    border:       '1px solid rgba(255,255,255,0.14)',
+    border:         '1px solid rgba(255,255,255,0.14)',
   },
   brand: {
-    background:   'rgba(139,92,246,0.08)',
+    background:     'rgba(139,92,246,0.08)',
     backdropFilter: 'blur(16px)',
-    border:       '1px solid rgba(139,92,246,0.25)',
+    border:         '1px solid rgba(139,92,246,0.25)',
   },
 } as const;
-
-// ─── Breakpoints ──────────────────────────────────────────────────────────────
 
 export const breakpoints = {
   sm:  '640px',
@@ -224,8 +189,6 @@ export const breakpoints = {
   xl:  '1280px',
   '2xl': '1536px',
 } as const;
-
-// ─── Z-Index Scale ────────────────────────────────────────────────────────────
 
 export const zIndex = {
   hide:    -1,
@@ -238,54 +201,47 @@ export const zIndex = {
   toast:    500,
 } as const;
 
-// ─── Clerk Appearance Tokens ──────────────────────────────────────────────────
-// Use these in <SignIn appearance={clerkAppearance} /> etc.
-
-import { dark } from '@clerk/themes';
-
 export const clerkAppearance = {
   baseTheme: dark,
   variables: {
-    colorBackground:        '#0E1220',
-    colorInputBackground:   'rgba(255, 255, 255, 0.05)',
-    colorInputText:         '#FFFFFF',
-    colorText:              '#FFFFFF',
-    colorTextSecondary:     '#E2E8F0',
-    colorPrimary:           '#8B5CF6',
-    colorDanger:            '#EF4444',
-    borderRadius:           '10px',
-    fontFamily:             "'Inter', system-ui, sans-serif",
-    fontSize:               '15px',
+    colorBackground:      '#0E1220',
+    colorInputBackground: 'rgba(255, 255, 255, 0.05)',
+    colorInputText:       '#FFFFFF',
+    colorText:            '#FFFFFF',
+    colorTextSecondary:   '#E2E8F0',
+    colorPrimary:         '#8B5CF6',
+    colorDanger:          '#EF4444',
+    borderRadius:         '10px',
+    fontFamily:           "'Inter', system-ui, sans-serif",
+    fontSize:             '15px',
   },
   elements: {
-    card:                   'wx-clerk-card',
-    rootBox:                'wx-clerk-root',
-    headerTitle:            'wx-clerk-title',
+    card:                     'wx-clerk-card',
+    rootBox:                  'wx-clerk-root',
+    headerTitle:              'wx-clerk-title',
     socialButtonsBlockButton: 'wx-clerk-social-btn',
     socialButtonsBlockButtonText: { color: '#FFFFFF' },
-    formButtonPrimary:      'wx-clerk-primary-btn',
-    footerActionLink:       'wx-clerk-footer-link',
+    formButtonPrimary:        'wx-clerk-primary-btn',
+    footerActionLink:         'wx-clerk-footer-link',
     formFieldInput: {
       backgroundColor: 'rgba(255, 255, 255, 0.05)',
       color: '#FFFFFF',
       borderColor: 'rgba(255, 255, 255, 0.15)',
     },
-    formFieldLabel: { color: '#E2E8F0' },
-    formFieldHintText: { color: '#94A3B8' },
-    formFieldInfoText: { color: '#94A3B8' },
+    formFieldLabel:       { color: '#E2E8F0' },
+    formFieldHintText:    { color: '#94A3B8' },
+    formFieldInfoText:    { color: '#94A3B8' },
     formFieldSuccessText: { color: '#10B981' },
-    headerSubtitle: { color: '#94A3B8' },
-    dividerLine: { background: 'rgba(255, 255, 255, 0.15)' },
-    dividerText: { color: '#94A3B8' },
-    formFieldAction: { color: '#A78BFA' },
-    footer: { display: 'none' },
-    footerActionText: { color: '#94A3B8' },
-    badge: { color: '#94A3B8' },
+    headerSubtitle:       { color: '#94A3B8' },
+    dividerLine:          { background: 'rgba(255, 255, 255, 0.15)' },
+    dividerText:          { color: '#94A3B8' },
+    formFieldAction:      { color: '#A78BFA' },
+    footer:               { display: 'none' },
+    footerActionText:     { color: '#94A3B8' },
+    badge:                { color: '#94A3B8' },
     providerIcon__github: { filter: 'invert(1)' },
   },
 } as const;
-
-// ─── Default Export — Full Theme Object ───────────────────────────────────────
 
 const theme = {
   colors,

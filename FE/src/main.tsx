@@ -3,25 +3,17 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { ClerkProvider } from '@clerk/react';
 import { ConfigProvider, theme as antdTheme } from 'antd';
-import { colors, typography, radius } from './theme';
+import { colors, typography, radius, clerkAppearance } from './theme';
 import './index.css';
 import App from './App';
-
 import { config } from './config';
 
-/**
- * Clerk Publishable Key — loaded from runtime config (env.sh injected).
- */
 const CLERK_PUBLISHABLE_KEY = config.clerkPublishableKey;
 
 if (!CLERK_PUBLISHABLE_KEY) {
-  console.error(
-    '[WorkX] Missing VITE_CLERK_PUBLISHABLE_KEY.\n' +
-    'Create a Clerk app at https://clerk.com and add the key to .env.development'
-  );
+  console.error('[WorkX] Missing VITE_CLERK_PUBLISHABLE_KEY. Add it to .env.development');
 }
 
-// ─── Ant Design Premium Dark Theme Integration ───────────
 const customAntdTheme = {
   algorithm: antdTheme.darkAlgorithm,
   token: {
@@ -31,7 +23,7 @@ const customAntdTheme = {
     colorBgElevated: colors.bg.elevated,
     colorTextBase: colors.text.primary,
     fontFamily: typography.fontFamily.sans,
-    borderRadius: parseInt(radius.md), // Map string '10px' to number 10
+    borderRadius: parseInt(radius.md),
     colorBorderSecondary: colors.border.default,
   },
   components: {
@@ -53,11 +45,9 @@ const customAntdTheme = {
       headerBg: 'transparent',
       bodyBg: 'transparent',
       footerBg: 'transparent',
-    }
-  }
+    },
+  },
 };
-
-import { clerkAppearance } from './theme';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
