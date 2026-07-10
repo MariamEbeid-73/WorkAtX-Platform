@@ -32,6 +32,7 @@ services:
     container_name: workx-be
     environment:
       ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Development}"
+      Clerk__Authority: "${CLERK_AUTHORITY}"
       ConnectionStrings__DefaultConnection: >
         Server=db,1433;Database=WorkXDb;
         User Id=SA;Password=${DB_PASSWORD:-WorkX@Password2026};

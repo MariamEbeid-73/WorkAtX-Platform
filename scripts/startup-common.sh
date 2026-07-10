@@ -54,6 +54,17 @@ resolve_compose_cmd() {
 run_startup() {
   print_banner
 
+  # ── .env bootstrap ─────────────────────────────────────────────────────────
+  if [[ ! -f "${REPO_ROOT}/.env" ]]; then
+    if [[ -f "${REPO_ROOT}/.env.example" ]]; then
+      cp "${REPO_ROOT}/.env.example" "${REPO_ROOT}/.env"
+      echo -e "${YELLOW}→${RESET} .env not found — created from .env.example. Edit it if needed."
+      echo ""
+    else
+      fail ".env not found and no .env.example to copy from. Create .env manually."
+    fi
+  fi
+
   # ── Prerequisites ──────────────────────────────────────────────────────────
   echo -e "${YELLOW}${BOLD}Checking prerequisites...${RESET}"
   echo ""
