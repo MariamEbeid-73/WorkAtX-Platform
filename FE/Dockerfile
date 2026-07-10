@@ -17,6 +17,9 @@ FROM nginx:1.25-alpine AS runtime
 # Remove default nginx page
 RUN rm -rf /usr/share/nginx/html/*
 
+# Add custom Nginx config for SPA routing
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
 # Vite outputs to dist
 COPY --from=build /app/dist /usr/share/nginx/html
 

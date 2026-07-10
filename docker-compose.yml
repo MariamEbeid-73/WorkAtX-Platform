@@ -33,7 +33,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Development}"
       ConnectionStrings__DefaultConnection: >
-        Server=db,1433;Database=master;
+        Server=db,1433;Database=WorkXDb;
         User Id=SA;Password=${DB_PASSWORD:-WorkX@Password2026};
         TrustServerCertificate=True;
     ports:
@@ -52,6 +52,7 @@ services:
     container_name: workx-fe
     environment:
       VITE_API_URL: "${VITE_API_URL:-http://localhost:5000}"
+      VITE_CLERK_PUBLISHABLE_KEY: "${VITE_CLERK_PUBLISHABLE_KEY}"
     ports:
       - "4200:80"
     depends_on:

@@ -21,4 +21,5 @@ const getEnvVar = (key: string, defaultValue: string = ""): string => {
 
 export const config = {
   apiUrl: getEnvVar("VITE_API_URL", "http://localhost:5000"),
+  clerkPublishableKey: getEnvVar("VITE_CLERK_PUBLISHABLE_KEY", ""),
 };
