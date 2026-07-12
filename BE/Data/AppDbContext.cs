@@ -19,7 +19,7 @@ public class AppDbContext : DbContext
             entity.ToTable("Users");
             entity.HasIndex(u => u.ClerkUserId).IsUnique().HasDatabaseName("IX_Users_ClerkUserId");
             entity.HasIndex(u => u.Email).IsUnique().HasDatabaseName("IX_Users_Email");
-            entity.Property(u => u.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            entity.Property(u => u.CreatedAt).HasDefaultValueSql("NOW()");
         });
 
         modelBuilder.Entity<Subscription>(entity =>
@@ -30,8 +30,8 @@ public class AppDbContext : DbContext
             entity.HasIndex(s => s.UserId).HasDatabaseName("IX_Subscriptions_UserId");
             entity.Property(s => s.PlanType).HasDefaultValue("FREE_TRIAL");
             entity.Property(s => s.IsActive).HasDefaultValue(true);
-            entity.Property(s => s.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
-            entity.Property(s => s.UpdatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            entity.Property(s => s.CreatedAt).HasDefaultValueSql("NOW()");
+            entity.Property(s => s.UpdatedAt).HasDefaultValueSql("NOW()");
         });
     }
 }
