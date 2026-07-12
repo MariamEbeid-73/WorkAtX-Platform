@@ -9,7 +9,33 @@ using BE.Models;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Description = "Paste your Clerk JWT here (no need to type 'Bearer ' first)"
+    });
+
+    options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        {
+            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            {
+                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 
 builder.Services.AddCors(options =>
 {
@@ -178,4 +204,15 @@ app.MapGet("/api/subscription/status", async (HttpContext httpContext, AppDbCont
 })
 .RequireAuthorization();
 
+app.MapGet("/me", (HttpContext httpContext) =>
+{
+    var clerkUserId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+        ?? httpContext.User.FindFirstValue("sub");
+
+    var email = httpContext.User.FindFirstValue(ClaimTypes.Email)
+        ?? httpContext.User.FindFirstValue("email");
+
+    return Results.Ok(new { clerkUserId, email });
+})
+.RequireAuthorization();
 app.Run();
