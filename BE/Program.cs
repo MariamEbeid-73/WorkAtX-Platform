@@ -1,80 +1,34 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.EntityFrameworkCore;
-using Npgsql;
-using Microsoft.IdentityModel.Tokens;
-using System.Security.Claims;
 using BE.Data;
-using BE.Models;
+using BE.Extensions;
+using BE.Common.Middleware;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options =>
-{
-    options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-    {
-        Name = "Authorization",
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
-        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Description = "Paste your Clerk JWT here (no need to type 'Bearer ' first)"
-    });
-
-    options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
-    {
-        {
-            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-            {
-                Reference = new Microsoft.OpenApi.Models.OpenApiReference
-                {
-                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
-    });
-});
-
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowFrontend", policy =>
-    {
-        policy
-            .WithOrigins("http://localhost:4200", "http://localhost:5173")
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .AllowCredentials();
-    });
-});
+builder.Services.AddControllers();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSwaggerDocumentation();
+builder.Services.AddClerkAuthentication(builder.Configuration);
+builder.Services.AddApplicationServices();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
 );
 
-var clerkAuthority = builder.Configuration["Clerk:Authority"]
-    ?? throw new InvalidOperationException("Clerk:Authority is not configured.");
-
-builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
     {
-        options.Authority = clerkAuthority;
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = clerkAuthority,
-            ValidateAudience = false,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            NameClaimType = ClaimTypes.NameIdentifier,
-        };
+        policy.WithOrigins("http://localhost:4200", "http://localhost:5173")
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
     });
-
-builder.Services.AddAuthorization();
+});
 
 var app = builder.Build();
+
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 app.UseSwagger();
 app.UseSwaggerUI();
@@ -83,6 +37,8 @@ app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapControllers();
+
 if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
@@ -90,129 +46,4 @@ if (app.Environment.IsDevelopment())
     db.Database.Migrate();
 }
 
-app.MapGet("/health", async (IConfiguration config) =>
-{
-    string dbStatus = "Disconnected";
-    try
-    {
-        using var connection = new NpgsqlConnection(config.GetConnectionString("DefaultConnection") ?? "");
-        await connection.OpenAsync();
-        dbStatus = "Connected OK";
-    }
-    catch (Exception ex)
-    {
-        dbStatus = $"Error: {ex.Message}";
-    }
-
-    return new { status = "Healthy", dbStatus };
-});
-
-app.MapPost("/api/subscription/start-trial", async (HttpContext httpContext, AppDbContext db) =>
-{
-    var clerkUserId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
-        ?? httpContext.User.FindFirstValue("sub");
-
-    if (string.IsNullOrEmpty(clerkUserId))
-        return Results.Unauthorized();
-
-    var email = httpContext.User.FindFirstValue(ClaimTypes.Email)
-        ?? httpContext.User.FindFirstValue("email")
-        ?? $"{clerkUserId}@noemail.local";
-
-    var user = await db.Users.FirstOrDefaultAsync(u => u.ClerkUserId == clerkUserId);
-    if (user == null)
-    {
-        user = new User { ClerkUserId = clerkUserId, Email = email };
-        db.Users.Add(user);
-        await db.SaveChangesAsync();
-    }
-
-    var existing = await db.Subscriptions.FirstOrDefaultAsync(s => s.UserId == user.Id && s.IsActive);
-    if (existing != null)
-        return Results.Conflict(new { message = "An active subscription already exists." });
-
-    var now = DateTimeOffset.UtcNow;
-    var subscription = new Subscription
-    {
-        UserId = user.Id,
-        PlanType = "FREE_TRIAL",
-        TrialStartDate = now,
-        TrialEndDate = now.AddDays(30),
-        IsActive = true,
-    };
-    db.Subscriptions.Add(subscription);
-    await db.SaveChangesAsync();
-
-    return Results.Ok(new
-    {
-        message = "Free trial started!",
-        planType = subscription.PlanType,
-        trialStartDate = subscription.TrialStartDate,
-        trialEndDate = subscription.TrialEndDate,
-        isActive = subscription.IsActive,
-    });
-})
-.RequireAuthorization();
-
-app.MapGet("/api/subscription/status", async (HttpContext httpContext, AppDbContext db) =>
-{
-    var clerkUserId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
-        ?? httpContext.User.FindFirstValue("sub");
-
-    if (string.IsNullOrEmpty(clerkUserId))
-        return Results.Unauthorized();
-
-    var user = await db.Users.FirstOrDefaultAsync(u => u.ClerkUserId == clerkUserId);
-    if (user == null)
-    {
-        var email = httpContext.User.FindFirstValue(ClaimTypes.Email)
-            ?? httpContext.User.FindFirstValue("email")
-            ?? $"{clerkUserId}@noemail.local";
-
-        user = new User { ClerkUserId = clerkUserId, Email = email };
-        db.Users.Add(user);
-        await db.SaveChangesAsync();
-    }
-
-    var subscription = await db.Subscriptions
-        .Where(s => s.UserId == user.Id)
-        .OrderByDescending(s => s.CreatedAt)
-        .FirstOrDefaultAsync();
-
-    if (subscription == null)
-        return Results.NotFound(new { message = "No subscription found." });
-
-    if (subscription.IsActive && subscription.TrialEndDate < DateTimeOffset.UtcNow)
-    {
-        subscription.IsActive = false;
-        subscription.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync();
-    }
-
-    var daysRemaining = Math.Max(0, (int)(subscription.TrialEndDate - DateTimeOffset.UtcNow).TotalDays);
-
-    return Results.Ok(new
-    {
-        planType = subscription.PlanType,
-        isActive = subscription.IsActive,
-        trialStartDate = subscription.TrialStartDate,
-        trialEndDate = subscription.TrialEndDate,
-        daysRemaining,
-        stripeCustomerId = subscription.StripeCustomerId,
-        stripeSubscriptionId = subscription.StripeSubscriptionId,
-    });
-})
-.RequireAuthorization();
-
-app.MapGet("/me", (HttpContext httpContext) =>
-{
-    var clerkUserId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
-        ?? httpContext.User.FindFirstValue("sub");
-
-    var email = httpContext.User.FindFirstValue(ClaimTypes.Email)
-        ?? httpContext.User.FindFirstValue("email");
-
-    return Results.Ok(new { clerkUserId, email });
-})
-.RequireAuthorization();
 app.Run();
