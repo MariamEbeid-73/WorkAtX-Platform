@@ -1,4 +1,4 @@
-﻿namespace BE.Services.Abstractions;
+﻿namespace BE.ServiceContracts;
 
 public interface ICurrentUserService
 {

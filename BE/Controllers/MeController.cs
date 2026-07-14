@@ -1,5 +1,5 @@
 ﻿using BE.DTOs.Me;
-using BE.Services.Abstractions;
+using BE.ServiceContracts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -11,18 +11,23 @@ namespace BE.Controllers;
 public class MeController : ControllerBase
 {
     private readonly ICurrentUserService _currentUserService;
+    private readonly IUserService _userService;
 
-    public MeController(ICurrentUserService currentUserService)
+
+    public MeController(ICurrentUserService currentUserService, IUserService userService)
     {
         _currentUserService = currentUserService;
+        _userService = userService;
     }
 
     [HttpGet]
-    public ActionResult<MeResponse> GetMe()
+    public async Task<ActionResult<MeResponse>> GetMe()
     {
         var clerkUserId = _currentUserService.GetClerkUserId();
         var email = _currentUserService.GetEmail();
 
-        return Ok(new MeResponse(clerkUserId, email));
+        var user = await _userService.GetOrCreateUserAsync(clerkUserId, email);
+
+        return Ok(new MeResponse(user.Id, user.ClerkUserId, user.Email));
     }
 }

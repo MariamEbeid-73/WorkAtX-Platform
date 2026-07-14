@@ -1,8 +1,8 @@
 ﻿using BE.DTOs.Health;
-using BE.Services.Abstractions;
+using BE.ServiceContracts;
 using Npgsql;
 
-namespace BE.Services.Implementations;
+namespace BE.Services;
 
 public class HealthCheckService : IHealthCheckService
 {

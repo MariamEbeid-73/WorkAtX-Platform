@@ -1,6 +1,6 @@
 ﻿using System.Security.Claims;
-using BE.Services.Abstractions;
-using BE.Services.Implementations;
+using BE.Services;
+using BE.ServiceContracts;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;

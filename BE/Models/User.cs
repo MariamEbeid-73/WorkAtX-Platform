@@ -13,7 +13,8 @@ public class User
 
     [Required]
     [MaxLength(320)]
-    public string? Email { get; set; } = string.Empty;
+    [EmailAddress]
+    public string Email { get; set; } = string.Empty;
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 

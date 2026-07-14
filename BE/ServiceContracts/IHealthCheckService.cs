@@ -1,6 +1,6 @@
 ﻿using BE.DTOs.Health;
 
-namespace BE.Services.Abstractions;
+namespace BE.ServiceContracts;
 
 public interface IHealthCheckService
 {

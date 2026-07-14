@@ -1,9 +1,9 @@
 ﻿using BE.Data;
 using BE.Models;
-using BE.Services.Abstractions;
 using Microsoft.EntityFrameworkCore;
+using BE.ServiceContracts;
 
-namespace BE.Services.Implementations;
+namespace BE.Services;
 
 public class UserService : IUserService
 {
@@ -24,5 +24,10 @@ public class UserService : IUserService
             await _db.SaveChangesAsync();
         }
         return user;
+    }
+
+    public async Task<User?> GetByClerkIdAsync(string clerkUserId)
+    {
+        return await _db.Users.FirstOrDefaultAsync(u => u.ClerkUserId == clerkUserId);
     }
 }

@@ -1,7 +1,7 @@
 ﻿using System.Security.Claims;
 using BE.Common.Exceptions;
-using BE.Services.Abstractions;
-namespace BE.Services.Implementations;
+using BE.ServiceContracts;
+namespace BE.Services;
 
 public class CurrentUserService : ICurrentUserService
 {

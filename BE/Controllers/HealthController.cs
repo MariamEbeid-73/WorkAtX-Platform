@@ -1,7 +1,7 @@
 ﻿using BE.DTOs.Health;
-using BE.Services.Abstractions;
 using Microsoft.AspNetCore.Mvc;
 
+using BE.ServiceContracts;
 namespace BE.Controllers;
 
 [ApiController]

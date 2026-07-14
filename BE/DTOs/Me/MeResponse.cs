@@ -1,3 +1,3 @@
 ﻿namespace BE.DTOs.Me;
 
-public record MeResponse(string? ClerkUserId, string? Email);
+public record MeResponse(Guid Id, string? ClerkUserId, string? Email);

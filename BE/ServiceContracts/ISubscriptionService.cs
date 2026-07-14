@@ -1,6 +1,6 @@
 ﻿using BE.DTOs.Subscription;
 
-namespace BE.Services.Abstractions;
+namespace BE.ServiceContracts;
 
 public interface ISubscriptionService
 {

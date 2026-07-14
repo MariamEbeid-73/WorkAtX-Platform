@@ -2,10 +2,10 @@
 using BE.DTOs.Subscription;
 using BE.Models;
 using BE.Common.Exceptions;
-using BE.Services.Abstractions;
+using BE.ServiceContracts;
 using Microsoft.EntityFrameworkCore;
 
-namespace BE.Services.Implementations;
+namespace BE.Services;
 
 public class SubscriptionService : ISubscriptionService
 {
