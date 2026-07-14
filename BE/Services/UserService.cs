@@ -19,7 +19,7 @@ public class UserService : IUserService
         var user = await _db.Users.FirstOrDefaultAsync(u => u.ClerkUserId == clerkUserId);
         if (user == null)
         {
-            user = new User { ClerkUserId = clerkUserId, Email = email };
+           user = new User { ClerkUserId = clerkUserId, Email = email ?? "unknown@placeholder.local" };
             _db.Users.Add(user);
             await _db.SaveChangesAsync();
         }
