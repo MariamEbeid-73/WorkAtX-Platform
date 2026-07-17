@@ -1,7 +1,12 @@
+import { useState, useEffect } from 'react';
 import { useAuth } from '@clerk/react';
 import { useNavigate } from 'react-router-dom';
-import { Layout, Typography, Button, Row, Col, Card, Space, Badge } from 'antd';
-import { CheckCircleFilled, RocketOutlined, ThunderboltOutlined, CrownOutlined } from '@ant-design/icons';
+import { Layout, Typography, Button, Badge } from 'antd';
+import { 
+  CheckCircleFilled, RocketOutlined, ThunderboltOutlined, CrownOutlined,
+  FileSearchOutlined, AimOutlined, CodeOutlined
+} from '@ant-design/icons';
+import { ComingSoonModal } from '../components/ComingSoonModal';
 import { config } from '../config';
 import './LandingPage.css';
 
@@ -82,10 +87,23 @@ const PLANS: Plan[] = [
 ];
 
 export function LandingPage() {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, isLoaded } = useAuth();
   const navigate = useNavigate();
+  const [comingSoonPlan, setComingSoonPlan] = useState<string | null>(null);
+
+  // If already signed in, go directly to dashboard
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isLoaded, isSignedIn, navigate]);
 
   const handleSelectPlan = async (plan: Plan) => {
+    if (plan.id === 'pro' || plan.id === 'enterprise') {
+      setComingSoonPlan(plan.name);
+      return;
+    }
+
     if (!isSignedIn) {
       navigate('/sign-up');
       return;
@@ -106,107 +124,148 @@ export function LandingPage() {
     }
   };
 
+  // If we are redirecting, return null to avoid flash of content
+  if (!isLoaded || isSignedIn) {
+    return null;
+  }
+
   return (
     <Layout className="landing">
+      <ComingSoonModal 
+        open={!!comingSoonPlan} 
+        onClose={() => setComingSoonPlan(null)} 
+        planName={comingSoonPlan || ''} 
+      />
+      
       <div className="landing__hero-glow" />
       <div className="landing__hero-glow-secondary" />
 
       <Header className="landing__nav">
         <div className="landing__logo" onClick={() => navigate('/')}>Work@X</div>
-        <Space size="middle">
-          {isSignedIn ? (
-            <Button type="primary" onClick={() => navigate('/dashboard')}>Dashboard</Button>
-          ) : (
-            <>
-              <Button type="text" onClick={() => navigate('/sign-in')} style={{ color: 'var(--text-secondary)' }}>Sign In</Button>
-              <Button type="primary" onClick={() => navigate('/sign-up')}>Get Started</Button>
-            </>
-          )}
-        </Space>
+        <div className="landing__nav-actions">
+          <Button type="primary" onClick={() => navigate('/sign-up')}>
+            Get Started
+          </Button>
+        </div>
       </Header>
 
       <Content>
+        {/* ── Hero Section ────────────────────────────────────────────── */}
         <section className="landing__hero">
           <Badge
             color="#8B5CF6"
-            text={<span style={{ color: '#A78BFA', fontWeight: 500, marginLeft: 8 }}>Now with Advanced AI Models</span>}
+            text={<span style={{ color: '#A78BFA', fontWeight: 500, marginLeft: 8 }}>AI-Powered Career Growth</span>}
             className="landing__badge"
-            style={{ marginBottom: 24, padding: '6px 16px', background: 'rgba(139,92,246,0.1)', borderRadius: 20, border: '1px solid rgba(139,92,246,0.25)' }}
           />
           <Title level={1} className="landing__title">
-            Update Your Career. Land a Job at <span className="landing__title-gradient">Top Companies.</span>
+            Analyze. Prepare. <span className="landing__title-gradient">Get Hired.</span>
           </Title>
-          <Paragraph className="landing__subtitle" style={{ fontSize: 18, color: 'var(--text-secondary)' }}>
-            Work@X gives you the tools, roadmaps, and the most advanced AI models
-            to help you get hired at Company X, Y, Z and beyond.
+          <Paragraph className="landing__subtitle">
+            Work@X analyzes your resume and GitHub, generates tailored study plans, and provides actionable career insights to help you land your dream job at top tech companies.
           </Paragraph>
-          <Space size="large" style={{ marginTop: 24 }}>
-            <Button type="primary" size="large" onClick={() => navigate(isSignedIn ? '/dashboard' : '/sign-up')}>
-              Start Your Journey
-            </Button>
-            <Button size="large" type="default" style={{ background: 'transparent', color: 'white' }}>
-              View Career Paths
-            </Button>
-          </Space>
         </section>
 
+        {/* ── Features Section ────────────────────────────────────────── */}
+        <section className="features">
+          <div className="features__header">
+            <Text style={{ color: 'var(--color-primary-400)', textTransform: 'uppercase', letterSpacing: 2, fontWeight: 600 }}>
+              How It Works
+            </Text>
+            <Title level={2} style={{ marginTop: 12 }}>Your Path to Top Tech</Title>
+          </div>
+          
+          <div className="features__grid">
+            <div className="feature-card">
+              <div className="feature-icon" style={{ color: '#A78BFA' }}>
+                <FileSearchOutlined />
+              </div>
+              <div className="feature-title">AI Profile Analysis</div>
+              <div className="feature-desc">
+                Upload your CV and connect your GitHub. Our advanced AI scans your experience, repositories, and skills to calculate your objective Developer Score.
+              </div>
+            </div>
+
+            <div className="feature-card">
+              <div className="feature-icon" style={{ color: '#22D3EE' }}>
+                <AimOutlined />
+              </div>
+              <div className="feature-title">Tailored Roadmaps</div>
+              <div className="feature-desc">
+                Select your target companies like Google, Meta, or Amazon. We generate week-by-week study plans that specifically address your skill gaps.
+              </div>
+            </div>
+
+            <div className="feature-card">
+              <div className="feature-icon" style={{ color: '#F59E0B' }}>
+                <CodeOutlined />
+              </div>
+              <div className="feature-title">Geni AI Assistant</div>
+              <div className="feature-desc">
+                Practice mock interviews, ask technical questions, and get instant, actionable feedback from your dedicated AI career coach.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Pricing Section ─────────────────────────────────────────── */}
         <section className="pricing">
-          <div className="pricing__header" style={{ textAlign: 'center', marginBottom: 60 }}>
+          <div className="pricing__header">
             <Text style={{ color: 'var(--color-primary-400)', textTransform: 'uppercase', letterSpacing: 2, fontWeight: 600 }}>
               Pricing & Plans
             </Text>
             <Title level={2} style={{ marginTop: 12 }}>Unlock Your Potential</Title>
             <Paragraph style={{ color: 'var(--text-secondary)', fontSize: 16 }}>
-              Start free and upgrade when you're ready for our advanced AI models.
+              Start for free. Upgrade when you're ready for our advanced AI models.
             </Paragraph>
           </div>
 
-          <Row gutter={[24, 24]} justify="center">
+          <div className="pricing__grid">
             {PLANS.map((plan) => (
-              <Col xs={24} md={8} key={plan.id} style={{ display: 'flex' }}>
-                <Card
-                  hoverable
-                  className={`pricing-card ${plan.featured ? 'pricing-card--featured' : ''}`}
-                  style={{ width: '100%', display: 'flex', flexDirection: 'column' }}
-                  bodyStyle={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '32px 24px' }}
-                >
-                  {plan.featured && <div className="pricing-card__popular-badge">Most Popular</div>}
-                  <div style={{ marginBottom: 20 }}>{plan.icon}</div>
-                  <Title level={4} style={{ margin: 0 }}>{plan.name}</Title>
-                  <Paragraph style={{ color: 'var(--text-tertiary)', minHeight: 44, marginTop: 8 }}>
-                    {plan.description}
-                  </Paragraph>
+              <div key={plan.id} className={`pricing-card ${plan.featured ? 'pricing-card--featured' : ''}`}>
+                {plan.featured && <div className="pricing-card__popular-badge">Most Popular</div>}
+                
+                <div className="pricing-card__icon">{plan.icon}</div>
+                <div className="pricing-card__name">{plan.name}</div>
+                <div className="pricing-card__description">{plan.description}</div>
 
-                  <div style={{ margin: '24px 0' }}>
-                    <span style={{ fontSize: 42, fontWeight: 800 }}>{plan.price}</span>
-                    <span style={{ color: 'var(--text-secondary)' }}>{plan.period}</span>
-                    <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>{plan.priceNote}</div>
+                <div style={{ margin: '24px 0' }}>
+                  <div className="pricing-card__price-row">
+                    <span className="pricing-card__price">{plan.price}</span>
+                    <span className="pricing-card__period">{plan.period}</span>
                   </div>
+                  <div className="pricing-card__price-note">{plan.priceNote}</div>
+                </div>
 
-                  <div style={{ flex: 1 }}>
-                    <Text strong style={{ fontSize: 12, textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>What's included</Text>
-                    <ul style={{ listStyle: 'none', padding: 0, marginTop: 16 }}>
-                      {plan.features.map((f, i) => (
-                        <li key={i} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 12 }}>
-                          <CheckCircleFilled style={{ color: 'var(--color-success)', marginTop: 4, marginRight: 10 }} />
-                          <span style={{ color: 'var(--text-secondary)' }}>{f}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                <div className="pricing-card__features-title">What's included</div>
+                <ul className="pricing-card__features">
+                  {plan.features.map((f, i) => (
+                    <li key={i} className="pricing-card__feature">
+                      <div className="pricing-card__feature-icon"><CheckCircleFilled /></div>
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
 
-                  <Button type={plan.ctaType} size="large" block style={{ marginTop: 24 }} onClick={() => handleSelectPlan(plan)}>
+                <div className="pricing-card__cta">
+                  <Button 
+                    type={plan.ctaType} 
+                    size="large" 
+                    block 
+                    onClick={() => handleSelectPlan(plan)}
+                  >
                     {plan.ctaLabel}
                   </Button>
-                </Card>
-              </Col>
+                </div>
+              </div>
             ))}
-          </Row>
+          </div>
         </section>
       </Content>
 
-      <Footer style={{ textAlign: 'center', color: 'var(--text-tertiary)', borderTop: '1px solid var(--border-subtle)' }}>
-        Work@X ©{new Date().getFullYear()} Created to upgrade your career.
+      <Footer className="landing__footer">
+        <div className="landing__footer-text">
+          Work@X ©{new Date().getFullYear()} — AI-Powered Career Growth
+        </div>
       </Footer>
     </Layout>
   );

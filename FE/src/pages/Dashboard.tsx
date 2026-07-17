@@ -1,130 +1,116 @@
-import { useUser, useClerk, useAuth } from '@clerk/react';
-import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Layout, Typography, Card, Button, Descriptions, Tag, Flex } from 'antd';
-import { LogoutOutlined, CrownOutlined, CheckCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
-import { config } from '../config';
+import { Flex, Typography, Alert, Skeleton } from 'antd';
+import { useUser } from '@clerk/react';
+import { UserHeaderCard }       from '../components/dashboard/UserHeaderCard';
+import { DeveloperIdentityCard } from '../components/dashboard/DeveloperIdentityCard';
+import { ScoreBreakdownCard }   from '../components/dashboard/ScoreBreakdownCard';
+import { FeedbackButton }       from '../components/dashboard/FeedbackButton';
+import { OnboardingModal }      from '../components/OnboardingModal';
+import { FullScreenLoader }     from '../components/FullScreenLoader';
+import { useProfileQuery, useScoresQuery, useGitHubIdentityQuery } from '../hooks/useProfile';
 
-const { Header, Content } = Layout;
 const { Title, Text } = Typography;
-
-interface SubscriptionStatus {
-  planType: string;
-  isActive: boolean;
-  trialStartDate: string;
-  trialEndDate: string;
-  daysRemaining: number;
-}
 
 export function Dashboard() {
   const { user } = useUser();
-  const { signOut } = useClerk();
-  const { getToken } = useAuth();
-  const navigate = useNavigate();
-  const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
+
+  // Data hooks (gracefully degrade when backend is offline)
+  const { data: profile,  isLoading: profileLoading,  error: profileError  } = useProfileQuery();
+  const { data: scores,   isLoading: scoresLoading                          } = useScoresQuery();
+  const { data: identity, isLoading: identityLoading, refetch: refetchIdentity } = useGitHubIdentityQuery();
+
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const token = await getToken();
-        if (!token) return;
-
-        const res = await fetch(`${config.apiUrl}/api/subscription/status`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) setSubscription(await res.json());
-      } catch {
-        // Backend may not be running yet
+    if (!profileLoading && !profileError) {
+      // If we successfully loaded profile but no GitHub is linked, show onboarding wizard
+      if (!profile?.socialLinks?.github) {
+        setShowOnboarding(true);
       }
-    };
-    fetchStatus();
-  }, [getToken]);
+    }
+  }, [profile, profileLoading, profileError]);
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/');
+  const greeting = () => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
   };
 
-  const formatDate = (iso: string) => {
-    if (!iso) return '—';
-    return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-  };
+  if (profileLoading) {
+    return <FullScreenLoader />;
+  }
 
   return (
-    <Layout style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
-      <Header style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 32px',
-        background: 'rgba(14, 18, 32, 0.8)',
-        backdropFilter: 'blur(16px)',
-        borderBottom: '1px solid var(--border-subtle)',
-      }}>
-        <div
-          onClick={() => navigate('/')}
-          style={{ cursor: 'pointer', fontSize: 20, fontWeight: 800, background: 'var(--gradient-text)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
-        >
-          Work@X
-        </div>
-        <Flex align="center" gap={16}>
-          <Text type="secondary">{user?.primaryEmailAddress?.emailAddress}</Text>
-          <Button type="text" icon={<LogoutOutlined />} onClick={handleSignOut} style={{ color: 'var(--text-secondary)' }}>
-            Sign Out
-          </Button>
-        </Flex>
-      </Header>
-
-      <Content style={{ position: 'relative', padding: '60px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 600, height: 400, background: 'radial-gradient(ellipse, rgba(139, 92, 246, 0.08) 0%, transparent 60%)', pointerEvents: 'none' }} />
-
-        <div style={{ zIndex: 1, textAlign: 'center', maxWidth: 560, marginBottom: 40 }}>
-          <div style={{ fontSize: 48, marginBottom: 20, animation: 'float 3s ease-in-out infinite' }}>👋</div>
-          <Title level={2}>Welcome back, {user?.firstName || 'there'}!</Title>
-          <Text type="secondary" style={{ fontSize: 16 }}>
-            Your workspace is ready. Access your personalized career roadmaps and advanced AI tools below.
+    <div style={{ animation: 'fadeIn 0.5s ease both' }}>
+      {/* ── Page Header ───────────────────────────────────────────────────── */}
+      <Flex align="baseline" justify="space-between" wrap="wrap" gap={8} style={{ marginBottom: 28 }}>
+        <Flex vertical gap={4}>
+          <Text style={{ fontSize: 13, color: 'var(--text-tertiary)', fontWeight: 500, letterSpacing: '0.02em' }}>
+            {greeting()}, {user?.firstName || 'Developer'} 👋
           </Text>
+          <Title level={3} style={{ margin: 0, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+            Developer Profile
+          </Title>
+        </Flex>
+        <Text style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+          Last updated · just now
+        </Text>
+      </Flex>
+
+      {/* ── API offline banner (only shown when backend unreachable) ──────── */}
+      {profileError && (
+        <Alert
+          type="info"
+          showIcon
+          message="Backend not connected"
+          description="The API is unreachable — showing demo data. Connect your backend to see live profile data."
+          style={{
+            marginBottom: 20,
+            background: 'rgba(59,130,246,0.08)',
+            border: '1px solid rgba(59,130,246,0.20)',
+            borderRadius: 12,
+          }}
+          closable
+        />
+      )}
+
+      {/* ── Card Stack ────────────────────────────────────────────────────── */}
+      <Flex vertical gap={20}>
+
+        {/* 1. User Header Card */}
+        {profileLoading ? (
+          <Skeleton active paragraph={{ rows: 4 }} style={{ padding: 24, borderRadius: 20, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }} />
+        ) : (
+          <div className="animate-fade-in" style={{ animationDelay: '0ms' }}>
+            <UserHeaderCard profile={profile} isLoading={false} />
+          </div>
+        )}
+
+        {/* 2. Developer Identity Card */}
+        <div className="animate-fade-in" style={{ animationDelay: '80ms' }}>
+          <DeveloperIdentityCard
+            identity={identity}
+            isLoading={identityLoading}
+            onVerify={refetchIdentity}  // will trigger GitHub OAuth in real impl
+          />
         </div>
 
-        <Card
-          title={<><CrownOutlined style={{ marginRight: 8, color: '#F59E0B' }} /> Subscription Details</>}
-          style={{ width: '100%', maxWidth: 600, zIndex: 1 }}
-          bordered
-        >
-          {subscription ? (
-            <Descriptions column={1} bordered size="small" labelStyle={{ width: 140 }}>
-              <Descriptions.Item label="Current Plan">
-                <Text strong>{subscription.planType === 'FREE_TRIAL' ? 'Starter (Trial)' : subscription.planType}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="Status">
-                {subscription.isActive
-                  ? <Tag icon={<CheckCircleOutlined />} color="success">Active</Tag>
-                  : <Tag icon={<ExclamationCircleOutlined />} color="error">Expired</Tag>}
-              </Descriptions.Item>
-              <Descriptions.Item label="Started">{formatDate(subscription.trialStartDate)}</Descriptions.Item>
-              <Descriptions.Item label="Expires">{formatDate(subscription.trialEndDate)}</Descriptions.Item>
-              {subscription.isActive && (
-                <Descriptions.Item label="Time Remaining">
-                  <Text type="secondary">{subscription.daysRemaining} days</Text>
-                </Descriptions.Item>
-              )}
-            </Descriptions>
-          ) : (
-            <Descriptions column={1} bordered size="small">
-              <Descriptions.Item label="Current Plan">No active plan</Descriptions.Item>
-              <Descriptions.Item label="Status">
-                <Tag icon={<ExclamationCircleOutlined />} color="error">Inactive</Tag>
-              </Descriptions.Item>
-            </Descriptions>
-          )}
+        {/* 3. Score Breakdown / Performance Hub */}
+        <div className="animate-fade-in" style={{ animationDelay: '160ms' }}>
+          <ScoreBreakdownCard scores={scores} isLoading={scoresLoading} />
+        </div>
 
-          {!subscription?.isActive && (
-            <Flex justify="center" style={{ marginTop: 24 }}>
-              <Button type="primary" onClick={() => navigate('/')}>View Upgrade Options</Button>
-            </Flex>
-          )}
-        </Card>
-      </Content>
-    </Layout>
+      </Flex>
+
+      {/* ── Floating Feedback Button ───────────────────────────────────────── */}
+      <FeedbackButton />
+
+      {/* Initial onboarding wizard */}
+      <OnboardingModal 
+        open={showOnboarding} 
+        onComplete={() => setShowOnboarding(false)} 
+      />
+    </div>
   );
 }

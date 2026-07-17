@@ -2,8 +2,9 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { ClerkProvider } from '@clerk/react';
-import { ConfigProvider, theme as antdTheme } from 'antd';
-import { colors, typography, radius, clerkAppearance } from './theme';
+import { ConfigProvider } from 'antd';
+import { clerkAppearance } from './theme';
+import { workXTheme } from './theme/antdTheme';
 import './index.css';
 import App from './App';
 import { config } from './config';
@@ -14,44 +15,9 @@ if (!CLERK_PUBLISHABLE_KEY) {
   console.error('[WorkX] Missing VITE_CLERK_PUBLISHABLE_KEY. Add it to .env.development');
 }
 
-const customAntdTheme = {
-  algorithm: antdTheme.darkAlgorithm,
-  token: {
-    colorPrimary: colors.primary[500],
-    colorBgBase: colors.bg.base,
-    colorBgContainer: colors.bg.surface,
-    colorBgElevated: colors.bg.elevated,
-    colorTextBase: colors.text.primary,
-    fontFamily: typography.fontFamily.sans,
-    borderRadius: parseInt(radius.md),
-    colorBorderSecondary: colors.border.default,
-  },
-  components: {
-    Button: {
-      controlHeight: 40,
-      controlHeightLG: 48,
-      controlHeightSM: 32,
-      borderRadius: parseInt(radius.lg),
-      colorPrimary: colors.primary[500],
-      colorPrimaryHover: colors.primary[400],
-      colorPrimaryActive: colors.primary[600],
-    },
-    Card: {
-      colorBgContainer: colors.bg.surface,
-      borderRadiusLG: parseInt(radius['2xl']),
-      colorBorderSecondary: colors.border.default,
-    },
-    Layout: {
-      headerBg: 'transparent',
-      bodyBg: 'transparent',
-      footerBg: 'transparent',
-    },
-  },
-};
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ConfigProvider theme={customAntdTheme}>
+    <ConfigProvider theme={workXTheme}>
       <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY || ''} appearance={clerkAppearance}>
         <BrowserRouter>
           <App />

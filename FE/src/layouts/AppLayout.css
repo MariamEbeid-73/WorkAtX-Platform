@@ -1,0 +1,277 @@
+/* ── AppLayout Shell ─────────────────────────────────────────────────────── */
+
+.app-shell {
+  min-height: 100vh;
+  background: var(--bg-base);
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+
+.app-sider {
+  height: 100vh;
+  position: fixed !important;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--bg-surface) !important;
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  z-index: 200;
+  overflow: hidden;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* Remove Antd's default scrollbar on the sider children wrapper */
+.app-sider .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Sidebar Logo ────────────────────────────────────────────────────────── */
+
+.sider-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 20px 8px;
+  text-decoration: none;
+  flex-shrink: 0;
+  min-height: 72px;
+  overflow: hidden;
+}
+
+.sider-logo-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+  box-shadow: 0 0 16px rgba(139,92,246,0.40);
+  letter-spacing: -0.5px;
+}
+
+.sider-logo-text {
+  font-size: 18px;
+  font-weight: 800;
+  background: linear-gradient(90deg, #C4B5FD 0%, #67E8F9 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  white-space: nowrap;
+  letter-spacing: -0.5px;
+  transition: opacity 0.2s ease;
+}
+
+.sider-logo-text.collapsed {
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+}
+
+/* ── Sidebar Navigation ──────────────────────────────────────────────────── */
+
+.sider-nav-wrap {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 0;
+}
+
+.sider-nav-wrap::-webkit-scrollbar { width: 3px; }
+.sider-nav-wrap::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.2); }
+
+/* Override Antd dark menu to align with design system */
+.app-sider .ant-menu-dark {
+  background: transparent !important;
+}
+
+.app-sider .ant-menu-dark .ant-menu-item {
+  margin: 2px 8px !important;
+  border-radius: 12px !important;
+  transition: all 0.18s ease;
+}
+
+.app-sider .ant-menu-dark .ant-menu-item:hover {
+  background: rgba(139,92,246,0.10) !important;
+}
+
+.app-sider .ant-menu-dark .ant-menu-item-selected {
+  background: rgba(139,92,246,0.18) !important;
+  box-shadow: 0 0 0 1px rgba(139,92,246,0.25) inset;
+}
+
+.app-sider .ant-menu-dark .ant-menu-item-selected::after {
+  display: none; /* remove the default active bar */
+}
+
+/* Nav item label pill */
+.nav-label {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+/* ── Nav section divider label ───────────────────────────────────────────── */
+
+.nav-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  padding: 12px 20px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: opacity 0.2s ease;
+}
+
+.nav-section-label.collapsed {
+  opacity: 0;
+}
+
+/* ── Sidebar Footer ──────────────────────────────────────────────────────── */
+
+.sider-footer {
+  flex-shrink: 0;
+  padding: 12px 12px 16px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  min-height: 52px;
+  overflow: hidden;
+  text-decoration: none;
+}
+
+.user-chip:hover {
+  background: rgba(139,92,246,0.08);
+  border-color: rgba(139,92,246,0.25);
+}
+
+.user-chip-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #7C3AED 0%, #0891B2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.user-chip-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: opacity 0.2s ease, width 0.25s ease;
+}
+
+.user-chip-info.collapsed {
+  opacity: 0;
+  width: 0;
+}
+
+.user-chip-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+}
+
+.user-chip-email {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+}
+
+.signout-btn-row {
+  display: flex;
+  justify-content: center;
+}
+
+/* ── Main Content Area ───────────────────────────────────────────────────── */
+
+.app-content-area {
+  background: var(--bg-base) !important;
+  padding: 28px 32px 80px;
+  min-height: 100vh;
+  /* offset for fixed sidebar — JS sets this via inline style */
+  transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+/* Subtle dot-grid background pattern */
+.app-content-area::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.025) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.app-content-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ── Collapse toggle button ──────────────────────────────────────────────── */
+
+.sider-collapse-btn {
+  position: fixed;
+  top: 26px;
+  z-index: 201;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1), background 0.18s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.sider-collapse-btn:hover {
+  background: rgba(139,92,246,0.15);
+  border-color: rgba(139,92,246,0.4);
+  color: var(--text-primary);
+}
