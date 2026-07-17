@@ -4,6 +4,7 @@ import { AppLayout }          from '../layouts/AppLayout';
 import { LandingPage }        from '../pages/LandingPage';
 import { SignInPage }         from '../pages/SignInPage';
 import { SignUpPage }         from '../pages/SignUpPage';
+import { SSOCallbackPage }    from '../pages/SSOCallbackPage';
 import { Dashboard }          from '../pages/Dashboard';
 import { KnowledgeGraphPage } from '../pages/KnowledgeGraphPage';
 import { GeniPage }           from '../pages/GeniPage';
@@ -12,9 +13,11 @@ import { GeniPage }           from '../pages/GeniPage';
  * AppRouter
  *
  * Route tree:
- *  /               → LandingPage       (public)
- *  /sign-in/*      → SignInPage        (public)
- *  /sign-up/*      → SignUpPage        (public)
+ *  /                        → LandingPage       (public)
+ *  /sign-in/sso-callback    → SSOCallbackPage   (public — must be before sign-in/*)
+ *  /sign-up/sso-callback    → SSOCallbackPage   (public — must be before sign-up/*)
+ *  /sign-in/*               → SignInPage        (public)
+ *  /sign-up/*               → SignUpPage        (public)
  *
  *  Protected (ClerkAuthGuard → AppLayout):
  *    /dashboard          → Dashboard
@@ -27,7 +30,12 @@ export function AppRouter() {
   return (
     <Routes>
       {/* ── Public routes ───────────────────────────────────────────────── */}
-      <Route path="/"          element={<LandingPage />} />
+      <Route path="/" element={<LandingPage />} />
+
+      {/* SSO callback routes — must be BEFORE sign-in/* and sign-up/* wildcards */}
+      <Route path="/sign-in/sso-callback" element={<SSOCallbackPage />} />
+      <Route path="/sign-up/sso-callback" element={<SSOCallbackPage />} />
+
       <Route path="/sign-in/*" element={<SignInPage />}  />
       <Route path="/sign-up/*" element={<SignUpPage />}  />
 
