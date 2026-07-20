@@ -7,8 +7,11 @@ import { SignUpPage }         from '../pages/SignUpPage';
 import { SSOCallbackPage }    from '../pages/SSOCallbackPage';
 import { Dashboard }          from '../pages/Dashboard';
 import { KnowledgeGraphPage } from '../pages/KnowledgeGraphPage';
-import { GeniPage }           from '../pages/GeniPage';
-
+import { GeniPage } from '../pages/GeniPage';
+import { PricingPage } from '../pages/PricingPage';
+import { AiTutorPage } from '../pages/AiTutorPage';
+import { MockInterviewPage } from '../pages/MockInterviewPage';
+import { CvOptimizerPage } from '../pages/CvOptimizerPage';
 /**
  * AppRouter
  *
@@ -27,37 +30,32 @@ import { GeniPage }           from '../pages/GeniPage';
  *  *               → redirect to /
  */
 export function AppRouter() {
-  return (
-    <Routes>
-      {/* ── Public routes ───────────────────────────────────────────────── */}
-      <Route path="/" element={<LandingPage />} />
+    return (
+        <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/pricing" element={<PricingPage />} />
 
-      {/* SSO callback routes — must be BEFORE sign-in/* and sign-up/* wildcards */}
-      <Route path="/sign-in/sso-callback" element={<SSOCallbackPage />} />
-      <Route path="/sign-up/sso-callback" element={<SSOCallbackPage />} />
+            <Route path="/sign-in/sso-callback" element={<SSOCallbackPage />} />
+            <Route path="/sign-up/sso-callback" element={<SSOCallbackPage />} />
+            <Route path="/sign-in/*" element={<SignInPage />} />
+            <Route path="/sign-up/*" element={<SignUpPage />} />
 
-      <Route path="/sign-in/*" element={<SignInPage />}  />
-      <Route path="/sign-up/*" element={<SignUpPage />}  />
+            <Route
+                element={
+                    <ClerkAuthGuard>
+                        <AppLayout />
+                    </ClerkAuthGuard>
+                }
+            >
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/knowledge-graph" element={<KnowledgeGraphPage />} />
+                <Route path="/geni" element={<GeniPage />} />
+                <Route path="/ai-tutor" element={<AiTutorPage />} />
+                <Route path="/mock-interview" element={<MockInterviewPage />} />
+                <Route path="/cv-optimizer" element={<CvOptimizerPage />} />
+            </Route>
 
-      {/* ── Protected routes (Clerk guard → shared AppLayout shell) ─────── */}
-      <Route
-        element={
-          <ClerkAuthGuard>
-            <AppLayout />
-          </ClerkAuthGuard>
-        }
-      >
-        <Route path="/dashboard"       element={<Dashboard />}          />
-        <Route path="/knowledge-graph" element={<KnowledgeGraphPage />} />
-        <Route path="/geni"            element={<GeniPage />}           />
-      </Route>
-
-      {/* ── Fallback ─────────────────────────────────────────────────────── */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    <Route path="/pricing" element={<PricingPage />} />
-<Route path="/ai-tutor" element={<AiTutorPage />} />
-<Route path="/mock-interview" element={<MockInterviewPage />} />
-<Route path="/cv-optimizer" element={<CvOptimizerPage />} />
-  );
+            <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+    );
 }
