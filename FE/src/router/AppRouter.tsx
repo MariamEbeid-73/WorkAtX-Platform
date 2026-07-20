@@ -54,6 +54,10 @@ export function AppRouter() {
 
       {/* ── Fallback ─────────────────────────────────────────────────────── */}
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    <Route path="/pricing" element={<PricingPage />} />
+<Route path="/ai-tutor" element={<AiTutorPage />} />
+<Route path="/mock-interview" element={<MockInterviewPage />} />
+<Route path="/cv-optimizer" element={<CvOptimizerPage />} />
   );
 }

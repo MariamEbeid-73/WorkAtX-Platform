@@ -27,7 +27,7 @@ public class MeController : ControllerBase
         var email = _currentUserService.GetEmail();
 
         var user = await _userService.GetOrCreateUserAsync(clerkUserId, email);
-
-        return Ok(new MeResponse(user.Id, user.ClerkUserId, user.Email));
+        var plan = _currentUserService.GetPlan();
+        return Ok(new MeResponse(user.Id, user.ClerkUserId, user.Email, plan));
     }
 }

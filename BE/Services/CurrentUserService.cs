@@ -30,4 +30,9 @@ public class CurrentUserService : ICurrentUserService
 
         return email;
     }
+    public string? GetPlan()
+    {
+        var user = _httpContextAccessor.HttpContext?.User;
+        return user?.FindFirstValue("plan");
+    }
 }
