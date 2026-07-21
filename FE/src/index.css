@@ -269,3 +269,12 @@ code, pre { font-family: var(--font-mono); font-size: 0.875rem; }
 .animate-scale-in   { animation: scaleIn   0.4s var(--ease-spring)  both; }
 .animate-float      { animation: float     3s ease-in-out infinite; }
 .animate-pulse-glow { animation: pulse-glow 2.5s ease-in-out infinite; }
+[class^="cl-"],
+[class*=" cl-"] {
+    color: #FFFFFF !important;
+}
+
+    [class^="cl-"][class*="econdary"],
+    [class*=" cl-"][class*="econdary"] {
+        color: #F1F5F9 !important;
+    }

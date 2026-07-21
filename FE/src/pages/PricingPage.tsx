@@ -1,9 +1,10 @@
-import { PricingTable } from '@clerk/react';
+
+import { CustomPricingTable } from '../components/billing/CustomPricingTable';
 
 export function PricingPage() {
     return (
         <div style={{ padding: 32, maxWidth: 1200, margin: '0 auto' }}>
-            <PricingTable />
+            <CustomPricingTable />
         </div>
     );
 }

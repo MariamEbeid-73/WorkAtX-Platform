@@ -14,6 +14,7 @@ import {
   BellOutlined,
 } from '@ant-design/icons';
 import './AppLayout.css';
+import { CrownOutlined } from '@ant-design/icons';
 
 const { Sider, Content } = Layout;
 
@@ -22,23 +23,27 @@ const SIDEBAR_COLLAPSED = 72;
 
 // ── Navigation items ─────────────────────────────────────────────────────────
 const navItems: MenuProps['items'] = [
-  {
-    key: '/dashboard',
-    icon: <UserOutlined />,
-    label: <span className="nav-label">Profile</span>,
-  },
-  {
-    key: '/knowledge-graph',
-    icon: <ApartmentOutlined />,
-    label: <span className="nav-label">Knowledge Graph</span>,
-  },
-  {
-    key: '/geni',
-    icon: <RobotOutlined />,
-    label: <span className="nav-label">Geni AI</span>,
-  },
+    {
+        key: '/dashboard',
+        icon: <UserOutlined />,
+        label: <span className="nav-label">Profile</span>,
+    },
+    {
+        key: '/knowledge-graph',
+        icon: <ApartmentOutlined />,
+        label: <span className="nav-label">Knowledge Graph</span>,
+    },
+    {
+        key: '/geni',
+        icon: <RobotOutlined />,
+        label: <span className="nav-label">Geni AI</span>,
+    },
+    {
+        key: '/pricing',
+        icon: <CrownOutlined />,
+        label: <span className="nav-label">Billing & Plans</span>,
+    },
 ];
-
 // ── AppLayout ────────────────────────────────────────────────────────────────
 export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
@@ -65,7 +70,13 @@ export function AppLayout() {
 
   // User account dropdown
   const accountMenu: MenuProps = {
-    items: [
+      items: [
+          {
+              key: 'billing',
+              icon: <CrownOutlined />,
+              label: 'Billing & Plans',
+              onClick: () => navigate('/pricing')
+          },
       {
         key: 'settings',
         icon: <SettingOutlined />,
@@ -171,7 +182,8 @@ export function AppLayout() {
         <div className="app-content-inner">
           <Outlet />
         </div>
-      </Content>
+          </Content>
+ 
     </Layout>
   );
 }

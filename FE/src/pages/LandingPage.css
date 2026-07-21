@@ -205,10 +205,11 @@
 }
 
 .pricing__grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 32px;
-  align-items: stretch;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(280px, 340px));
+    justify-content: center; 
+    gap: 32px;
+    align-items: stretch;
 }
 
 @media (max-width: 960px) {
