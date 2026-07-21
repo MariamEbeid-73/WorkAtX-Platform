@@ -1,6 +1,7 @@
+using BE.Common;
+using BE.ServiceContracts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using BE.ServiceContracts;
 
 namespace BE.Controllers;
 
@@ -19,9 +20,9 @@ public class CvOptimizerController : ControllerBase
     [HttpPost("analyze")]
     public IActionResult Analyze()
     {
-        if (_currentUserService.GetPlan() != "pro")
+        if (!PlanTier.AtLeast(_currentUserService.GetPlan(), "elite"))
             return Forbid();
 
-        return StatusCode(501, new { message = "CV Optimizer is coming soon." });
+        return StatusCode(501, new { message = "Cv Optimizer is coming soon." });
     }
 }

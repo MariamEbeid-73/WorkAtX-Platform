@@ -1,6 +1,7 @@
-﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
+﻿using BE.Common;
 using BE.ServiceContracts;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace BE.Controllers;
 
@@ -19,7 +20,7 @@ public class AiTutorController : ControllerBase
     [HttpPost("ask")]
     public IActionResult Ask()
     {
-        if (_currentUserService.GetPlan() != "pro")
+        if (!PlanTier.AtLeast(_currentUserService.GetPlan(), "elite"))
             return Forbid();
 
         return StatusCode(501, new { message = "AI Tutor is coming soon." });

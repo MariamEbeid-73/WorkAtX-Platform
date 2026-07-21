@@ -22,6 +22,23 @@ namespace BE.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("BE.Models.MessageUsage", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("WindowStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("MessageUsages");
+                });
+
             modelBuilder.Entity("BE.Models.User", b =>
                 {
                     b.Property<Guid>("Id")

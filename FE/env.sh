@@ -1,4 +1,4 @@
-﻿#!/bin/sh
+#!/bin/sh
 # line endings must be \n, not \r\n!
 
 echo "window._env_ = {" > /usr/share/nginx/html/env-config.js
