@@ -1,13 +1,18 @@
-import { Show } from '@clerk/react';
-import { ComingSoonModal } from '../components/ComingSoonModal';
+import { useAuth } from "@clerk/react";
+import { useNavigate } from "react-router-dom";
+import { ComingSoonModal } from "../components/ComingSoonModal";
 
 export function CvOptimizerPage() {
-    return (
-        <Show
-            when={{ plan: 'pro' }}
-            fallback={<ComingSoonModal open onClose={() => { }} planName="Pro Tier" />}
-        >
-            <ComingSoonModal open onClose={() => { }} planName="Pro Tier" />
-        </Show>
-    );
+  const { has } = useAuth();
+  const navigate = useNavigate();
+  const hasAccess = has({ plan: "elite" });
+
+  return (
+    <ComingSoonModal
+      open
+      onClose={() => navigate("/dashboard")}
+      featureName="CV Optimizer"
+      hasAccess={hasAccess}
+    />
+  );
 }
