@@ -1,6 +1,8 @@
 using Amazon;
 using Amazon.S3;
 using Amazon.S3.Model;
+using Amazon.Runtime;
+using System.Net.Http;
 using BE.ServiceContracts;
 
 namespace BE.Services;
@@ -35,10 +37,12 @@ public class S3FileStorageService : IFileStorageService, IDisposable
         {
             config.ServiceURL   = endpoint;
             config.ForcePathStyle = true;
+            config.HttpClientFactory = new TrustAllHttpClientFactory();
 
             // For local dev, presigned URLs must be signed for localhost so the browser's Host header matches.
             presignedConfig.ServiceURL = endpoint.Replace("minio", "localhost");
             presignedConfig.ForcePathStyle = true;
+            presignedConfig.HttpClientFactory = new TrustAllHttpClientFactory();
         }
 
         _s3Client = new AmazonS3Client(accessKey, secretKey, config);
@@ -89,5 +93,17 @@ public class S3FileStorageService : IFileStorageService, IDisposable
     {
         _s3Client.Dispose();
         _presignedS3Client?.Dispose();
+    }
+}
+
+public class TrustAllHttpClientFactory : HttpClientFactory
+{
+    public override HttpClient CreateHttpClient(IClientConfig clientConfig)
+    {
+        var handler = new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+        };
+        return new HttpClient(handler);
     }
 }

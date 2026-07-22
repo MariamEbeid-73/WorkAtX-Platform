@@ -30,8 +30,9 @@ services:
       - "9001:9001" # Web UI — visit http://localhost:9001 to browse buckets
     volumes:
       - workx-minio-data:/data
+      - ./certs:/root/.minio/certs
     healthcheck:
-      test: [ "CMD", "mc", "ready", "local" ]
+      test: [ "CMD-SHELL", "curl -kI https://localhost:9000/minio/health/live || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 5
