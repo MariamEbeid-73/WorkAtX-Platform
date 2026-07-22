@@ -4,6 +4,7 @@ using BE.ServiceContracts;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using BE.Common.Encryption;
 
 namespace BE.Extensions;
 
@@ -75,6 +76,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IHealthCheckService, HealthCheckService>();
         services.AddScoped<ISubscriptionService, SubscriptionService>();
         services.AddScoped<IUserService, UserService>();
+        services.AddSingleton<IAesEncryptionService, AesEncryptionService>();
+        services.AddSingleton<IFileStorageService, S3FileStorageService>();
+        services.AddHttpClient();
+        services.AddScoped<IOAuthTokenService, OAuthTokenService>();
+        services.AddScoped<IResumeService, ResumeService>();
+        services.AddScoped<IProfileService, ProfileService>();
 
         return services;
     }

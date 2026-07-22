@@ -1,19 +1,19 @@
 import { Card, Button, Flex, Typography, Tag } from 'antd';
 import { GithubOutlined, LinkOutlined, CheckCircleFilled } from '@ant-design/icons';
 import type { GitHubIdentity } from '../../types/profile';
+import { initiateOAuth } from '../../services/oauthService';
 
 const { Text, Title } = Typography;
 
 interface DeveloperIdentityCardProps {
   identity: GitHubIdentity | null;
   isLoading: boolean;
-  onVerify: () => void;
+  onVerify?: () => void; // kept for back-compat; button now calls initiateOAuth directly
 }
 
 export function DeveloperIdentityCard({
   identity,
   isLoading,
-  onVerify,
 }: DeveloperIdentityCardProps) {
   const isLinked = identity?.isLinked ?? false;
 
@@ -115,7 +115,7 @@ export function DeveloperIdentityCard({
           <Button
             type="default"
             icon={<GithubOutlined />}
-            onClick={onVerify}
+            onClick={() => initiateOAuth('github')}
             style={{
               background: 'rgba(255,255,255,0.06)',
               border: '1px solid rgba(255,255,255,0.14)',

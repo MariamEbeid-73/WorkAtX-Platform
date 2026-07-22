@@ -11,12 +11,31 @@ services:
     volumes:
       - workx-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-WorkXDb}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-WorkXDb}" ]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 20s
 
+  minio:
+    image: minio/minio:latest
+    container_name: workx-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+    ports:
+      - "9000:9000" # S3 API endpoint
+      - "9001:9001" # Web UI — visit http://localhost:9001 to browse buckets
+    volumes:
+      - workx-minio-data:/data
+    healthcheck:
+      test: [ "CMD", "mc", "ready", "local" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
   be:
     build:
       context: ./BE
@@ -29,12 +48,26 @@ services:
       ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Development}"
       Clerk__Authority: "${CLERK_AUTHORITY}"
       ConnectionStrings__DefaultConnection: >
-        Host=db;Port=5432;Database=${DB_NAME:-WorkXDb};
-        Username=${DB_USER:-postgres};Password=${DB_PASSWORD:-WorkX@Password2026};
+        Host=db;Port=5432;Database=${DB_NAME:-WorkXDb}; Username=${DB_USER:-postgres};Password=${DB_PASSWORD:-WorkX@Password2026};
+      S3__Endpoint: "http://minio:9000"
+      S3__BucketName: "${S3_BUCKET_NAME:-workx-resumes}"
+      S3__AccessKey: "${AWS_ACCESS_KEY_ID:-minioadmin}"
+      S3__SecretKey: "${AWS_SECRET_ACCESS_KEY:-minioadmin}"
+      S3__Region: "${AWS_REGION:-us-east-1}"
+      OAuth__GitHub__ClientId: "${GITHUB_CLIENT_ID}"
+      OAuth__GitHub__ClientSecret: "${GITHUB_CLIENT_SECRET}"
+      OAuth__GitHub__RedirectUri: "http://localhost:5000/oauth/github/callback"
+      OAuth__LinkedIn__ClientId: "${LINKEDIN_CLIENT_ID}"
+      OAuth__LinkedIn__ClientSecret: "${LINKEDIN_CLIENT_SECRET}"
+      OAuth__LinkedIn__RedirectUri: "http://localhost:5000/oauth/linkedin/callback"
+      OAuth__FrontendCallbackUrl: "${VITE_API_URL:-http://localhost:5173}/connected-accounts"
+      Encryption__Key: "${ENCRYPTION_KEY}"
     ports:
       - "5000:5000"
     depends_on:
       db:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   fe:
@@ -55,3 +88,4 @@ services:
 
 volumes:
   workx-db-data:
+  workx-minio-data:

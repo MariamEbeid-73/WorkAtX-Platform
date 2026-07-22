@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAuth } from '@clerk/react';
 import {
   Modal, Steps, Button, Upload, Input, Flex, Typography, Tag, Progress, message,
 } from 'antd';
@@ -7,6 +8,7 @@ import {
   UploadOutlined, GithubOutlined, LinkedinOutlined, RocketOutlined,
   FileTextOutlined, CheckCircleFilled, LoadingOutlined,
 } from '@ant-design/icons';
+import { createUploadIntent, uploadToMinIO, confirmUpload } from '../services/resumeService';
 
 const { Title, Text } = Typography;
 const { Dragger } = Upload;
@@ -75,6 +77,7 @@ function ProcessingScreen() {
 
 // ── Main Onboarding Modal ────────────────────────────────────────────────────
 export function OnboardingModal({ open, onComplete, onClose, closable = false }: OnboardingModalProps) {
+  const { getToken } = useAuth();
   const [currentStep, setCurrentStep] = useState<OnboardingStep>(0);
   const [processing, setProcessing]   = useState(false);
   const [data, setData]               = useState<OnboardingData>({ resume: null, github: '', linkedin: '' });
@@ -102,8 +105,26 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
 
   const handleLaunch = async () => {
     setProcessing(true);
-    // Simulate API processing — replace with real endpoint
-    await new Promise((r) => setTimeout(r, 3000));
+    try {
+      if (data.resume) {
+        const file = data.resume as unknown as File;
+        const token = await getToken();
+        if (!token) throw new Error('Not authenticated');
+
+        // Step 1 — get pre-signed PUT URL
+        const { resumeId, uploadUrl } = await createUploadIntent(token, file);
+
+        // Step 2 — upload directly to MinIO (progress shown via ProcessingScreen)
+        await uploadToMinIO(uploadUrl, file, () => {});
+
+        // Step 3 — mark as confirmed in the backend
+        await confirmUpload(token, resumeId);
+      }
+    } catch (err: any) {
+      msgApi.error(err?.message ?? 'Upload failed. Please try again.');
+      setProcessing(false);
+      return;
+    }
     setProcessing(false);
     onComplete();
   };
