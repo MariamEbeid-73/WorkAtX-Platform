@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { useUser, useClerk } from '@clerk/react';
-import { Layout, Menu, Button, Tooltip, Dropdown } from 'antd';
-import type { MenuProps } from 'antd';
+import { useState } from "react";
+import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import { useUser, useClerk } from "@clerk/react";
+import { Layout, Menu, Button, Tooltip, Dropdown } from "antd";
+import type { MenuProps } from "antd";
 import {
   UserOutlined,
   ApartmentOutlined,
@@ -12,75 +12,96 @@ import {
   RightOutlined,
   SettingOutlined,
   BellOutlined,
-} from '@ant-design/icons';
-import './AppLayout.css';
+  ReadOutlined,
+  AudioOutlined,
+  FileSearchOutlined,
+} from "@ant-design/icons";
+import "./AppLayout.css";
 
 const { Sider, Content } = Layout;
 
-const SIDEBAR_WIDTH     = 240;
+const SIDEBAR_WIDTH = 240;
 const SIDEBAR_COLLAPSED = 72;
 
-// ── Navigation items ─────────────────────────────────────────────────────────
-const navItems: MenuProps['items'] = [
+const navItems: MenuProps["items"] = [
   {
-    key: '/dashboard',
+    key: "/dashboard",
     icon: <UserOutlined />,
     label: <span className="nav-label">Profile</span>,
   },
   {
-    key: '/knowledge-graph',
-    icon: <ApartmentOutlined />,
-    label: <span className="nav-label">Knowledge Graph</span>,
+    key: "/geni",
+    icon: <RobotOutlined />,
+    label: <span className="nav-label">GenAi</span>,
   },
   {
-    key: '/geni',
-    icon: <RobotOutlined />,
-    label: <span className="nav-label">Geni AI</span>,
+    key: "/knowledge-graph",
+    icon: <ApartmentOutlined />,
+    label: <span className="nav-label">Knowledg e Graph</span>,
+  },
+  {
+    key: "/ai-tutor",
+    icon: <ReadOutlined />,
+    label: <span className="nav-label">Ai Tutoring</span>,
+  },
+  {
+    key: "/mock-interview",
+    icon: <AudioOutlined />,
+    label: <span className="nav-label">Mock Interview</span>,
+  },
+  {
+    key: "/cv-optimizer",
+    icon: <FileSearchOutlined />,
+    label: <span className="nav-label">Cv Optimizer</span>,
   },
 ];
 
-// ── AppLayout ────────────────────────────────────────────────────────────────
 export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
-  const navigate  = useNavigate();
-  const location  = useLocation();
-  const { user }  = useUser();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useUser();
   const { signOut } = useClerk();
 
   const siderWidth = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_WIDTH;
 
-  // Derive user initials for avatar
-  const initials = [user?.firstName, user?.lastName]
-    .filter(Boolean)
-    .map((n) => n![0].toUpperCase())
-    .join('') || user?.primaryEmailAddress?.emailAddress?.[0]?.toUpperCase() || 'U';
+  const initials =
+    [user?.firstName, user?.lastName]
+      .filter(Boolean)
+      .map((n) => n![0].toUpperCase())
+      .join("") ||
+    user?.primaryEmailAddress?.emailAddress?.[0]?.toUpperCase() ||
+    "U";
 
-  const displayName = user?.fullName || user?.primaryEmailAddress?.emailAddress?.split('@')[0] || 'User';
-  const email       = user?.primaryEmailAddress?.emailAddress || '';
+  const displayName =
+    user?.fullName ||
+    user?.primaryEmailAddress?.emailAddress?.split("@")[0] ||
+    "User";
+  const email = user?.primaryEmailAddress?.emailAddress || "";
 
   const handleSignOut = async () => {
     await signOut();
-    navigate('/');
+    navigate("/");
   };
 
-  // User account dropdown
   const accountMenu: MenuProps = {
     items: [
       {
-        key: 'settings',
+        key: "settings",
         icon: <SettingOutlined />,
-        label: 'Account Settings',
+        label: "Settings",
+        onClick: () => navigate("/settings"),
       },
       {
-        key: 'notifications',
+        key: "notifications",
         icon: <BellOutlined />,
-        label: 'Notifications',
+        label: "Notifications",
       },
-      { type: 'divider' },
+      { type: "divider" },
       {
-        key: 'signout',
+        key: "signout",
         icon: <LogoutOutlined />,
-        label: 'Sign Out',
+        label: "Sign Out",
         danger: true,
         onClick: handleSignOut,
       },
@@ -89,7 +110,6 @@ export function AppLayout() {
 
   return (
     <Layout className="app-shell">
-      {/* ── Fixed Sidebar ───────────────────────────────────────────────── */}
       <Sider
         className="app-sider"
         width={SIDEBAR_WIDTH}
@@ -97,24 +117,20 @@ export function AppLayout() {
         collapsed={collapsed}
         trigger={null}
       >
-        {/* Logo */}
         <a
           className="sider-logo"
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate("/dashboard")}
           role="button"
-          style={{ cursor: 'pointer' }}
+          style={{ cursor: "pointer" }}
         >
           <div className="sider-logo-icon">W</div>
-          <span className={`sider-logo-text${collapsed ? ' collapsed' : ''}`}>
+          <span className={`sider-logo-text${collapsed ? " collapsed" : ""}`}>
             Work@X
           </span>
         </a>
 
-        {/* Navigation */}
         <div className="sider-nav-wrap">
-          {!collapsed && (
-            <div className="nav-section-label">Main</div>
-          )}
+          {!collapsed && <div className="nav-section-label">Main</div>}
           <Menu
             theme="dark"
             mode="inline"
@@ -125,12 +141,11 @@ export function AppLayout() {
           />
         </div>
 
-        {/* Footer: user chip + sign-out */}
         <div className="sider-footer">
-          <Dropdown menu={accountMenu} placement="topLeft" trigger={['click']}>
+          <Dropdown menu={accountMenu} placement="topLeft" trigger={["click"]}>
             <div className="user-chip">
               <div className="user-chip-avatar">{initials}</div>
-              <div className={`user-chip-info${collapsed ? ' collapsed' : ''}`}>
+              <div className={`user-chip-info${collapsed ? " collapsed" : ""}`}>
                 <span className="user-chip-name">{displayName}</span>
                 <span className="user-chip-email">{email}</span>
               </div>
@@ -145,7 +160,7 @@ export function AppLayout() {
                   icon={<LogoutOutlined />}
                   onClick={handleSignOut}
                   size="small"
-                  style={{ color: 'var(--text-tertiary)' }}
+                  style={{ color: "var(--text-tertiary)" }}
                 />
               </Tooltip>
             </div>
@@ -153,21 +168,16 @@ export function AppLayout() {
         </div>
       </Sider>
 
-      {/* ── Collapse toggle button ──────────────────────────────────────── */}
       <button
         className="sider-collapse-btn"
         style={{ left: siderWidth - 11 }}
         onClick={() => setCollapsed((c) => !c)}
-        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
         {collapsed ? <RightOutlined /> : <LeftOutlined />}
       </button>
 
-      {/* ── Main content ─────────────────────────────────────────────────── */}
-      <Content
-        className="app-content-area"
-        style={{ marginLeft: siderWidth }}
-      >
+      <Content className="app-content-area" style={{ marginLeft: siderWidth }}>
         <div className="app-content-inner">
           <Outlet />
         </div>

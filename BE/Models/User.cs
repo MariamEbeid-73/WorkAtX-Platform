@@ -18,5 +18,4 @@ public class User
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
-    public ICollection<Subscription> Subscriptions { get; set; } = new List<Subscription>();
 }

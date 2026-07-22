@@ -30,4 +30,22 @@ public class CurrentUserService : ICurrentUserService
 
         return email;
     }
+    public string GetPlan()
+    {
+        var user = _httpContextAccessor.HttpContext?.User;
+        var rawPla = user?.FindFirstValue("pla");
+
+        if (string.IsNullOrEmpty(rawPla))
+            return "free";
+
+        var slug = rawPla.Contains(':') ? rawPla.Split(':')[1] : rawPla;
+
+        return slug switch
+        {
+            "free_user" => "free",
+            "pro" => "pro",
+            "elite" => "elite",
+            _ => "free"
+        };
+    }
 }

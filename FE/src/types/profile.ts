@@ -36,6 +36,7 @@ export interface UserProfile {
   profileCompletionPct: number;  // 0-100
   createdAt: string;
   updatedAt: string;
+  plan: string | null;
 }
 
 // ─── GitHub Developer Identity ─────────────────────────────────────────────

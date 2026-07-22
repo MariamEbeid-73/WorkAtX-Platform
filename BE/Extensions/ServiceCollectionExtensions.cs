@@ -73,8 +73,8 @@ public static class ServiceCollectionExtensions
     {
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IHealthCheckService, HealthCheckService>();
-        services.AddScoped<ISubscriptionService, SubscriptionService>();
         services.AddScoped<IUserService, UserService>();
+        services.AddScoped<IUsageService, UsageService>();
 
         return services;
     }

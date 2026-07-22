@@ -1,95 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useAuth } from '@clerk/react';
 import { useNavigate } from 'react-router-dom';
 import { Layout, Typography, Button, Badge } from 'antd';
-import { 
-  CheckCircleFilled, RocketOutlined, ThunderboltOutlined, CrownOutlined,
-  FileSearchOutlined, AimOutlined, CodeOutlined
-} from '@ant-design/icons';
-import { ComingSoonModal } from '../components/ComingSoonModal';
-import { config } from '../config';
+import { FileSearchOutlined, AimOutlined, CodeOutlined } from '@ant-design/icons';
 import './LandingPage.css';
+import { CustomPricingTable } from '../components/billing/CustomPricingTable';
 
 const { Header, Content, Footer } = Layout;
 const { Title, Text, Paragraph } = Typography;
 
-interface Plan {
-  id: string;
-  name: string;
-  icon: React.ReactNode;
-  description: string;
-  price: string;
-  period: string;
-  priceNote: string;
-  features: string[];
-  ctaLabel: string;
-  ctaType: 'primary' | 'default' | 'dashed';
-  featured: boolean;
-}
 
-const PLANS: Plan[] = [
-  {
-    id: 'free-trial',
-    name: 'Starter',
-    icon: <RocketOutlined style={{ fontSize: 28, color: '#A78BFA' }} />,
-    description: 'Everything you need to jumpstart your career search.',
-    price: '$0',
-    period: 'for 30 days',
-    priceNote: 'No credit card required',
-    features: [
-      'Access to basic career roadmap',
-      'Standard resume templates',
-      'Community job board access',
-      'Standard AI resume scanner',
-    ],
-    ctaLabel: 'Start Free Trial',
-    ctaType: 'default',
-    featured: false,
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    icon: <ThunderboltOutlined style={{ fontSize: 28, color: '#22D3EE' }} />,
-    description: 'For ambitious professionals targeting top companies.',
-    price: '$29',
-    period: '/month',
-    priceNote: 'Billed monthly · Cancel anytime',
-    features: [
-      'Everything in Starter',
-      'Advanced AI models for interview prep',
-      'Tailored company-specific roadmaps',
-      'Priority application reviews',
-      '1-on-1 mock interviews (1/month)',
-    ],
-    ctaLabel: 'Upgrade to Pro',
-    ctaType: 'primary',
-    featured: true,
-  },
-  {
-    id: 'enterprise',
-    name: 'Elite',
-    icon: <CrownOutlined style={{ fontSize: 28, color: '#F59E0B' }} />,
-    description: 'Ultimate career transformation with the best AI models.',
-    price: '$99',
-    period: '/month',
-    priceNote: 'Billed monthly · Cancel anytime',
-    features: [
-      'Everything in Pro',
-      'Premium state-of-the-art AI reasoning models',
-      'Unlimited mock interviews',
-      'Direct referrals to partner networks',
-      'Dedicated career coach',
-    ],
-    ctaLabel: 'Get Elite',
-    ctaType: 'default',
-    featured: false,
-  },
-];
+
 
 export function LandingPage() {
   const { isSignedIn, isLoaded } = useAuth();
   const navigate = useNavigate();
-  const [comingSoonPlan, setComingSoonPlan] = useState<string | null>(null);
 
   // If already signed in, go directly to dashboard
   useEffect(() => {
@@ -98,31 +23,7 @@ export function LandingPage() {
     }
   }, [isLoaded, isSignedIn, navigate]);
 
-  const handleSelectPlan = async (plan: Plan) => {
-    if (plan.id === 'pro' || plan.id === 'enterprise') {
-      setComingSoonPlan(plan.name);
-      return;
-    }
 
-    if (!isSignedIn) {
-      navigate('/sign-up');
-      return;
-    }
-
-    if (plan.id === 'free-trial') {
-      try {
-        const res = await fetch(`${config.apiUrl}/api/subscription/start-trial`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-        });
-        if (res.ok) navigate('/dashboard');
-        else console.error('Failed to start trial:', res.statusText);
-      } catch (err) {
-        console.error('Trial start error:', err);
-      }
-    }
-  };
 
   // If we are redirecting, return null to avoid flash of content
   if (!isLoaded || isSignedIn) {
@@ -131,11 +32,7 @@ export function LandingPage() {
 
   return (
     <Layout className="landing">
-      <ComingSoonModal 
-        open={!!comingSoonPlan} 
-        onClose={() => setComingSoonPlan(null)} 
-        planName={comingSoonPlan || ''} 
-      />
+     
       
       <div className="landing__hero-glow" />
       <div className="landing__hero-glow-secondary" />
@@ -208,58 +105,20 @@ export function LandingPage() {
         </section>
 
         {/* ── Pricing Section ─────────────────────────────────────────── */}
-        <section className="pricing">
-          <div className="pricing__header">
-            <Text style={{ color: 'var(--color-primary-400)', textTransform: 'uppercase', letterSpacing: 2, fontWeight: 600 }}>
-              Pricing & Plans
-            </Text>
-            <Title level={2} style={{ marginTop: 12 }}>Unlock Your Potential</Title>
-            <Paragraph style={{ color: 'var(--text-secondary)', fontSize: 16 }}>
-              Start for free. Upgrade when you're ready for our advanced AI models.
-            </Paragraph>
-          </div>
-
-          <div className="pricing__grid">
-            {PLANS.map((plan) => (
-              <div key={plan.id} className={`pricing-card ${plan.featured ? 'pricing-card--featured' : ''}`}>
-                {plan.featured && <div className="pricing-card__popular-badge">Most Popular</div>}
-                
-                <div className="pricing-card__icon">{plan.icon}</div>
-                <div className="pricing-card__name">{plan.name}</div>
-                <div className="pricing-card__description">{plan.description}</div>
-
-                <div style={{ margin: '24px 0' }}>
-                  <div className="pricing-card__price-row">
-                    <span className="pricing-card__price">{plan.price}</span>
-                    <span className="pricing-card__period">{plan.period}</span>
+             
+              <section className="pricing">
+                  <div className="pricing__header">
+                      <Text style={{ color: 'var(--color-primary-400)', textTransform: 'uppercase', letterSpacing: 2, fontWeight: 600 }}>
+                          Pricing & Plans
+                      </Text>
+                      <Title level={2} style={{ marginTop: 12 }}>Unlock Your Potential</Title>
+                      <Paragraph style={{ color: 'var(--text-secondary)', fontSize: 16 }}>
+                          Start for free. Upgrade when you're ready for our advanced AI models.
+                      </Paragraph>
                   </div>
-                  <div className="pricing-card__price-note">{plan.priceNote}</div>
-                </div>
 
-                <div className="pricing-card__features-title">What's included</div>
-                <ul className="pricing-card__features">
-                  {plan.features.map((f, i) => (
-                    <li key={i} className="pricing-card__feature">
-                      <div className="pricing-card__feature-icon"><CheckCircleFilled /></div>
-                      <span>{f}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <div className="pricing-card__cta">
-                  <Button 
-                    type={plan.ctaType} 
-                    size="large" 
-                    block 
-                    onClick={() => handleSelectPlan(plan)}
-                  >
-                    {plan.ctaLabel}
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+                  <CustomPricingTable />
+              </section>
       </Content>
 
       <Footer className="landing__footer">

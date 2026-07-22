@@ -14,15 +14,29 @@ public class UserService : IUserService
         _db = db;
     }
 
-    public async Task<User> GetOrCreateUserAsync(string clerkUserId, string email)
+    public async Task<User> GetOrCreateUserAsync(string clerkUserId, string? email)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.ClerkUserId == clerkUserId);
-        if (user == null)
+        var existing = await _db.Users.FirstOrDefaultAsync(u => u.ClerkUserId == clerkUserId);
+        if (existing != null) return existing;
+
+        var resolvedEmail = string.IsNullOrWhiteSpace(email)
+            ? $"{clerkUserId}@noemail.local"
+            : email;
+
+        var user = new User { ClerkUserId = clerkUserId, Email = resolvedEmail };
+        _db.Users.Add(user);
+
+        try
         {
-           user = new User { ClerkUserId = clerkUserId, Email = email ?? "unknown@placeholder.local" };
-            _db.Users.Add(user);
             await _db.SaveChangesAsync();
         }
+        catch (DbUpdateException)
+        {
+            var winner = await _db.Users.FirstOrDefaultAsync(u => u.ClerkUserId == clerkUserId);
+            if (winner != null) return winner;
+            throw; 
+        }
+
         return user;
     }
 
