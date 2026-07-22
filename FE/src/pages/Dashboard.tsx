@@ -1,23 +1,50 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Flex, Typography, Alert, Skeleton } from 'antd';
-import { useUser } from '@clerk/react';
-import { UserHeaderCard }       from '../components/dashboard/UserHeaderCard';
+import { useUser, useAuth } from '@clerk/react';
+import { UserHeaderCard }        from '../components/dashboard/UserHeaderCard';
 import { DeveloperIdentityCard } from '../components/dashboard/DeveloperIdentityCard';
-import { ScoreBreakdownCard }   from '../components/dashboard/ScoreBreakdownCard';
-import { FeedbackButton }       from '../components/dashboard/FeedbackButton';
-import { OnboardingModal }      from '../components/OnboardingModal';
-import { FullScreenLoader }     from '../components/FullScreenLoader';
+import { LinkedInIdentityCard }  from '../components/dashboard/LinkedInIdentityCard';
+import { ScoreBreakdownCard }    from '../components/dashboard/ScoreBreakdownCard';
+import { FeedbackButton }        from '../components/dashboard/FeedbackButton';
+import { OnboardingModal }       from '../components/OnboardingModal';
+import { FullScreenLoader }      from '../components/FullScreenLoader';
 import { useProfileQuery, useScoresQuery, useGitHubIdentityQuery } from '../hooks/useProfile';
+import { getConnections } from '../services/oauthService';
+import type { ConnectedProvider } from '../types/oauth';
 
 const { Title, Text } = Typography;
 
 export function Dashboard() {
   const { user } = useUser();
+  const { getToken } = useAuth();
 
   // Data hooks (gracefully degrade when backend is offline)
   const { data: profile,  isLoading: profileLoading,  error: profileError  } = useProfileQuery();
   const { data: scores,   isLoading: scoresLoading                          } = useScoresQuery();
   const { data: identity, isLoading: identityLoading, refetch: refetchIdentity } = useGitHubIdentityQuery();
+
+  // OAuth connections (GitHub + LinkedIn)
+  const [connections, setConnections] = useState<ConnectedProvider[]>([]);
+  const [connectionsLoading, setConnectionsLoading] = useState(true);
+
+  const loadConnections = useCallback(async () => {
+    try {
+      setConnectionsLoading(true);
+      const token = await getToken();
+      if (token) {
+        const data = await getConnections(token);
+        setConnections(data);
+      }
+    } catch {
+      // silently ignore — cards degrade gracefully
+    } finally {
+      setConnectionsLoading(false);
+    }
+  }, [getToken]);
+
+  useEffect(() => { loadConnections(); }, [loadConnections]);
+
+  const linkedInConnection = connections.find(c => c.provider === 'linkedin') ?? null;
 
   const [showOnboarding, setShowOnboarding] = useState(false);
 
@@ -87,17 +114,25 @@ export function Dashboard() {
           </div>
         )}
 
-        {/* 2. Developer Identity Card */}
+        {/* 2. Developer Identity Card (GitHub) */}
         <div className="animate-fade-in" style={{ animationDelay: '80ms' }}>
           <DeveloperIdentityCard
             identity={identity}
             isLoading={identityLoading}
-            onVerify={refetchIdentity}  // will trigger GitHub OAuth in real impl
+            onVerify={refetchIdentity}
           />
         </div>
 
-        {/* 3. Score Breakdown / Performance Hub */}
-        <div className="animate-fade-in" style={{ animationDelay: '160ms' }}>
+        {/* 3. LinkedIn Identity Card */}
+        <div className="animate-fade-in" style={{ animationDelay: '140ms' }}>
+          <LinkedInIdentityCard
+            connection={linkedInConnection}
+            isLoading={connectionsLoading}
+          />
+        </div>
+
+        {/* 4. Score Breakdown / Performance Hub */}
+        <div className="animate-fade-in" style={{ animationDelay: '200ms' }}>
           <ScoreBreakdownCard scores={scores} isLoading={scoresLoading} />
         </div>
 

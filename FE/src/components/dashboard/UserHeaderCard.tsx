@@ -1,23 +1,25 @@
 import { useState } from 'react';
 import { useUser } from '@clerk/react';
+import { useAuth } from '@clerk/react';
 import { useNavigate } from 'react-router-dom';
 import {
   Card, Avatar, Button, Switch, Tooltip, Tag, Badge, Flex, Typography, Space,
 } from 'antd';
 import {
   EditOutlined,
-  GithubOutlined,
   SafetyCertificateOutlined,
   FileTextOutlined,
   ReloadOutlined,
   CheckCircleFilled,
   MessageOutlined,
+  LinkOutlined,
 } from '@ant-design/icons';
 import type { UserProfile } from '../../types/profile';
 import { useToggleOpenToWork } from '../../hooks/useProfile';
 import { CompleteProfileModal } from './CompleteProfileModal';
 import { ResumeViewerModal } from './ResumeViewerModal';
 import { OnboardingModal } from '../OnboardingModal';
+import { listResumes, getDownloadUrl } from '../../services/resumeService';
 
 const { Text, Title } = Typography;
 
@@ -28,6 +30,7 @@ interface UserHeaderCardProps {
 
 export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
   const { user } = useUser();
+  const { getToken } = useAuth();
   const navigate = useNavigate();
   const { mutate: toggleOtW, isPending } = useToggleOpenToWork();
 
@@ -35,6 +38,10 @@ export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
   const [showCompleteProfile, setShowCompleteProfile] = useState(false);
   const [showResumeViewer, setShowResumeViewer] = useState(false);
   const [showReanalyze, setShowReanalyze] = useState(false);
+
+  // Resume URL fetched on demand
+  const [resumeUrl, setResumeUrl] = useState<string | undefined>(undefined);
+  const [resumeFetching, setResumeFetching] = useState(false);
 
   // Optimistic local state for the toggle
   const [openToWork, setOpenToWork] = useState(profile?.isOpenToWork ?? false);
@@ -44,14 +51,32 @@ export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
     .map((n) => n![0].toUpperCase())
     .join('') || 'U';
 
-  const handle   = profile?.handle   || `@${user?.firstName?.toLowerCase() ?? 'user'}.dev`;
-  const github   = profile?.socialLinks?.github?.replace('https://github.com/', '') || 'link-github';
+  const handle = profile?.handle || `@${user?.firstName?.toLowerCase() ?? 'user'}.dev`;
   const completion = profile?.profileCompletionPct ?? 0;
   const isVerified = profile?.collegeVerification?.isVerified ?? false;
 
   const handleToggle = async (checked: boolean) => {
     setOpenToWork(checked);
     await toggleOtW({ isOpenToWork: checked });
+  };
+
+  const handleViewResume = async () => {
+    setResumeFetching(true);
+    try {
+      const token = await getToken();
+      const resumes = await listResumes(token!);
+      if (resumes.length > 0) {
+        const { downloadUrl } = await getDownloadUrl(token!, resumes[0].id);
+        setResumeUrl(downloadUrl);
+      } else {
+        setResumeUrl(undefined);
+      }
+    } catch {
+      setResumeUrl(undefined);
+    } finally {
+      setResumeFetching(false);
+      setShowResumeViewer(true);
+    }
   };
 
   return (
@@ -120,20 +145,21 @@ export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
               {handle}
             </Text>
 
-            {/* GitHub tag */}
+            {/* Connected Accounts tag */}
             <Flex align="center" gap={8} wrap="wrap">
               <Tag
-                icon={<GithubOutlined />}
+                icon={<LinkOutlined />}
+                onClick={() => navigate('/connected-accounts')}
                 style={{
                   background: 'rgba(255,255,255,0.05)',
                   border: '1px solid rgba(255,255,255,0.12)',
                   color: 'var(--text-secondary)',
                   borderRadius: 8,
-                  fontFamily: 'var(--font-mono)',
                   fontSize: 12,
+                  cursor: 'pointer',
                 }}
               >
-                {github}
+                Connected Accounts
               </Tag>
 
               {/* College verification badge */}
@@ -156,7 +182,7 @@ export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
                     fontSize: 12,
                     cursor: 'pointer',
                   }}
-                  onClick={() => {/* open verification modal */}}
+                  onClick={() => {/* open verification modal */ }}
                 >
                   {isVerified ? 'College Verified' : 'Verify Your College'}
                 </Tag>
@@ -227,7 +253,8 @@ export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
               <Button
                 size="small"
                 icon={<FileTextOutlined />}
-                onClick={() => setShowResumeViewer(true)}
+                loading={resumeFetching}
+                onClick={handleViewResume}
                 style={{
                   background: 'rgba(255,255,255,0.04)',
                   border: '1px solid rgba(255,255,255,0.10)',
@@ -273,21 +300,20 @@ export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
       </Flex>
 
       {/* Modals */}
-      <CompleteProfileModal 
-        open={showCompleteProfile} 
-        onClose={() => setShowCompleteProfile(false)} 
+      <CompleteProfileModal
+        open={showCompleteProfile}
+        onClose={() => setShowCompleteProfile(false)}
       />
-      <ResumeViewerModal 
-        open={showResumeViewer} 
-        onClose={() => setShowResumeViewer(false)} 
-        // Just mock PDF url for now
-        resumeUrl="https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf" 
+      <ResumeViewerModal
+        open={showResumeViewer}
+        onClose={() => setShowResumeViewer(false)}
+        resumeUrl={resumeUrl}
       />
-      <OnboardingModal 
-        open={showReanalyze} 
+      <OnboardingModal
+        open={showReanalyze}
         closable={true}
         onClose={() => setShowReanalyze(false)}
-        onComplete={() => setShowReanalyze(false)} 
+        onComplete={() => setShowReanalyze(false)}
       />
     </Card>
   );
