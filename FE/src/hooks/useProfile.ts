@@ -6,7 +6,6 @@ import {
   reanalyzeProfile,
   toggleOpenToWork,
   getGitHubIdentity,
-  getResumeUrl,
   submitFeedback,
 } from '../services/profileService';
 import type {
@@ -201,43 +200,6 @@ export function useToggleOpenToWork(): MutationState<
   );
 
   return { mutate, isPending, error, reset };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// useResumeUrl — GET /api/profile/resume
-// ─────────────────────────────────────────────────────────────────────────────
-export function useResumeUrl(): QueryState<{ url: string; expiresAt: string }> {
-  const { getToken } = useAuth();
-  const [data, setData] = useState<{ url: string; expiresAt: string } | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
-
-  const refetch = useCallback(() => setTick((t) => t + 1), []);
-
-  useEffect(() => {
-    if (tick === 0) return; // Only fetch when explicitly triggered
-    let cancelled = false;
-    setIsLoading(true);
-    setError(null);
-
-    (async () => {
-      try {
-        const token = await getToken();
-        if (!token) throw new Error('Not authenticated');
-        const res = await getResumeUrl(token);
-        if (!cancelled) setData(res.data);
-      } catch (err) {
-        if (!cancelled) setError((err as Error).message);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [getToken, tick]);
-
-  return { data, isLoading, error, refetch };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

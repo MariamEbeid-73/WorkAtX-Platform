@@ -37,6 +37,8 @@ public class ExceptionHandlingMiddleware
         NotFoundException => HttpStatusCode.NotFound,
         ConflictException => HttpStatusCode.Conflict,
         UnauthorizedAppException => HttpStatusCode.Unauthorized,
+        ForbiddenException => HttpStatusCode.Forbidden,
+        BadRequestException => HttpStatusCode.BadRequest,
         _ => HttpStatusCode.BadRequest,
     };
 
@@ -46,4 +48,6 @@ public class ExceptionHandlingMiddleware
         context.Response.StatusCode = (int)statusCode;
         await context.Response.WriteAsJsonAsync(new { message });
     }
+
+    
 }

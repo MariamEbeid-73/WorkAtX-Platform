@@ -102,13 +102,6 @@ export const initiateGitHubVerify = (token: string) =>
   });
 
 /**
- * GET /api/profile/resume
- * Returns a presigned URL for the user's uploaded resume.
- */
-export const getResumeUrl = (token: string) =>
-  apiRequest<ApiResponse<{ url: string; expiresAt: string }>>('/api/profile/resume', token);
-
-/**
  * POST /api/feedback
  * Submits user feedback (bug report, feature request, or general comment).
  */

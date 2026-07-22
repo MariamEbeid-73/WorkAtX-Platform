@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using BE.Common.Exceptions;
 using BE.ServiceContracts;
 namespace BE.Services;
@@ -27,6 +27,9 @@ public class CurrentUserService : ICurrentUserService
     {
         var user = _httpContextAccessor.HttpContext?.User;
         var email = user?.FindFirstValue(ClaimTypes.Email) ?? user?.FindFirstValue("email");
+
+        if (string.IsNullOrEmpty(email))
+            throw new UnauthorizedAppException("User email is unauthenticated.");
 
         return email;
     }
