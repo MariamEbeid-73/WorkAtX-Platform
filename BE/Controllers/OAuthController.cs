@@ -18,41 +18,31 @@ public class OAuthController : ControllerBase
     }
 
     /// <summary>
-    /// Redirects the user's browser to the provider's OAuth consent screen.
-    /// Not [Authorize] because the browser navigates here directly.
-    /// The Clerk JWT is NOT available on this redirect — we rely on the state
-    /// param as a CSRF token. The actual user binding happens in ExchangeCode,
-    /// which IS authorized via the Clerk JWT cookie.
+    /// Returns the provider's OAuth consent screen URL.
+    /// Requires [Authorize] because we embed the Clerk user ID into the OAuth state.
     /// </summary>
-    [HttpGet("{provider}/authorize")]
+    [Authorize]
+    [HttpPost("{provider}/authorize")]
     public IActionResult Authorize(string provider)
     {
-        // A random state prevents CSRF. In production you'd sign and verify this.
-        var state = Guid.NewGuid().ToString("N");
-        // TODO: store state in a short-lived cookie or cache for CSRF validation
-
-        var url = _oauthService.GetAuthorizationUrl(provider, state);
-        return Redirect(url);
+        var url = _oauthService.GetAuthorizationUrl(provider);
+        return Ok(new { url });
     }
 
     /// <summary>
     /// The provider redirects back here with ?code=...&state=...
     /// This endpoint exchanges the code for a token, saves it,
     /// then redirects the browser back to the frontend.
-    ///
-    /// IMPORTANT: This endpoint is NOT [Authorize] because at callback time
-    /// the browser is coming back from GitHub — the Clerk session cookie
-    /// IS present, so ICurrentUserService works via the cookie.
     /// </summary>
     [HttpGet("{provider}/callback")]
     public async Task<IActionResult> Callback(string provider, [FromQuery] string code, [FromQuery] string? state)
     {
         if (string.IsNullOrEmpty(code))
             return BadRequest("Missing code parameter.");
+        if (string.IsNullOrEmpty(state))
+            return BadRequest("Missing state parameter.");
 
-        // TODO: Validate the state parameter against stored CSRF token here
-
-        await _oauthService.ExchangeCodeAsync(provider, code);
+        await _oauthService.ExchangeCodeAsync(provider, code, state);
 
         var frontendUrl = _config["OAuth:FrontendCallbackUrl"] ?? "http://localhost:5173/connected-accounts";
         return Redirect(frontendUrl);

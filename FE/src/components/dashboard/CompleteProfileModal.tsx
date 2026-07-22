@@ -8,6 +8,8 @@ import {
   UserOutlined, GithubOutlined, LinkedinOutlined, MailOutlined,
   PhoneOutlined, UploadOutlined, SaveOutlined,
 } from '@ant-design/icons';
+import { initiateOAuth } from '../../services/oauthService';
+import { useAuth } from '@clerk/react';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -39,6 +41,7 @@ const DEGREE_OPTIONS = [
 ];
 
 export function CompleteProfileModal({ open, onClose }: CompleteProfileModalProps) {
+  const { getToken } = useAuth();
   const [form] = Form.useForm();
   const [resumeFile, setResumeFile] = useState<UploadFile | null>(null);
   const [msgApi, ctx] = message.useMessage();
@@ -108,8 +111,6 @@ export function CompleteProfileModal({ open, onClose }: CompleteProfileModalProp
             workPrefs: ['remote', 'hybrid', 'onsite'],
             contactEmail: 'your.email@example.com',
             contactPhone: '+91 98765 43210',
-            github: '',
-            linkedin: '',
             bio: '',
           }}
         >
@@ -158,30 +159,88 @@ export function CompleteProfileModal({ open, onClose }: CompleteProfileModalProp
           <Divider style={{ borderColor: 'rgba(255,255,255,0.06)', margin: '20px 0' }} />
 
           {/* ── Social Links ───────────────────────────────────────────── */}
-          {sectionLabel('Social Links')}
-          <Form.Item label="GitHub" name="github">
-            <Input prefix={
-              <Flex align="center" gap={6}>
-                <GithubOutlined style={{ color: 'var(--text-primary)' }} />
-                <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>github.com/</span>
+          {sectionLabel('Social Accounts')}
+          <Flex vertical gap={10}>
+            {/* GitHub */}
+            <Flex
+              align="center"
+              justify="space-between"
+              gap={12}
+              style={{
+                padding: '14px 16px',
+                borderRadius: 12,
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.10)',
+              }}
+            >
+              <Flex align="center" gap={10}>
+                <GithubOutlined style={{ fontSize: 18, color: 'var(--text-primary)' }} />
+                <Flex vertical gap={1}>
+                  <Text style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>GitHub</Text>
+                  <Text style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Connect to verify developer identity</Text>
+                </Flex>
               </Flex>
-            } placeholder="your-username" style={{ borderRadius: 10, height: 40 }} />
-          </Form.Item>
-          <Form.Item label={
-            <Flex align="center" gap={8}>
-              LinkedIn
-              <Tag style={{ borderRadius: 6, fontSize: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)', color: 'var(--text-tertiary)' }}>
-                Optional
-              </Tag>
+              <Button
+                icon={<GithubOutlined />}
+                onClick={async () => {
+                  const token = await getToken();
+                  if (token) await initiateOAuth('github', token);
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.14)',
+                  color: 'var(--text-primary)',
+                  borderRadius: 10, fontWeight: 600, height: 36,
+                }}
+              >
+                Connect
+              </Button>
             </Flex>
-          } name="linkedin">
-            <Input prefix={
-              <Flex align="center" gap={6}>
-                <LinkedinOutlined style={{ color: '#0A66C2' }} />
-                <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>linkedin.com/in/</span>
+
+            {/* LinkedIn */}
+            <Flex
+              align="center"
+              justify="space-between"
+              gap={12}
+              style={{
+                padding: '14px 16px',
+                borderRadius: 12,
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.10)',
+              }}
+            >
+              <Flex align="center" gap={10}>
+                <LinkedinOutlined style={{ fontSize: 18, color: '#0077B5' }} />
+                <Flex vertical gap={1}>
+                  <Flex align="center" gap={6}>
+                    <Text style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>LinkedIn</Text>
+                    <Tag style={{
+                      borderRadius: 6, fontSize: 10, lineHeight: '16px', padding: '0 6px',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,255,255,0.10)',
+                      color: 'var(--text-tertiary)',
+                    }}>Optional</Tag>
+                  </Flex>
+                  <Text style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Import work history and skills</Text>
+                </Flex>
               </Flex>
-            } placeholder="your-profile" style={{ borderRadius: 10, height: 40 }} />
-          </Form.Item>
+              <Button
+                icon={<LinkedinOutlined />}
+                onClick={async () => {
+                  const token = await getToken();
+                  if (token) await initiateOAuth('linkedin', token);
+                }}
+                style={{
+                  background: 'rgba(0,119,181,0.08)',
+                  border: '1px solid rgba(0,119,181,0.20)',
+                  color: '#00A0DC',
+                  borderRadius: 10, fontWeight: 600, height: 36,
+                }}
+              >
+                Connect
+              </Button>
+            </Flex>
+          </Flex>
 
           <Divider style={{ borderColor: 'rgba(255,255,255,0.06)', margin: '20px 0' }} />
 

@@ -37,8 +37,14 @@ public class OAuthTokenService : IOAuthTokenService
 
     // ── Authorization URL ────────────────────────────────────────────────────
 
-    public string GetAuthorizationUrl(string provider, string state)
+    public string GetAuthorizationUrl(string provider)
     {
+        var clerkUserId = _currentUserService.GetClerkUserId();
+        var email       = _currentUserService.GetEmail();
+        var stateObj    = new { u = clerkUserId, e = email, csrf = Guid.NewGuid().ToString("N") };
+        var stateStr    = JsonSerializer.Serialize(stateObj);
+        var state       = _encryption.Encrypt(stateStr);
+
         return provider.ToLower() switch
         {
             "github"   => BuildGitHubAuthUrl(state),
@@ -76,11 +82,22 @@ public class OAuthTokenService : IOAuthTokenService
 
     // ── Code Exchange ────────────────────────────────────────────────────────
 
-    public async Task ExchangeCodeAsync(string provider, string code)
+    public async Task ExchangeCodeAsync(string provider, string code, string state)
     {
-        var clerkUserId = _currentUserService.GetClerkUserId();
-        var email       = _currentUserService.GetEmail();
-        var user        = await _userService.GetOrCreateUserAsync(clerkUserId, email);
+        string clerkUserId, email;
+        try
+        {
+            var stateStr = _encryption.Decrypt(state);
+            var stateObj = JsonSerializer.Deserialize<JsonElement>(stateStr);
+            clerkUserId  = stateObj.GetProperty("u").GetString()!;
+            email        = stateObj.GetProperty("e").GetString()!;
+        }
+        catch
+        {
+            throw new BadRequestException("Invalid or expired OAuth state parameter.");
+        }
+
+        var user = await _userService.GetOrCreateUserAsync(clerkUserId, email);
 
         var (accessToken, refreshToken, expiresIn, username) = provider.ToLower() switch
         {

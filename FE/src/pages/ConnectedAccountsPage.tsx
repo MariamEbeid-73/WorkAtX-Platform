@@ -123,7 +123,10 @@ export function ConnectedAccountsPage() {
                                         </button>
                                     ) : (
                                         <button
-                                            onClick={() => initiateOAuth(id)}
+                                            onClick={async () => {
+                                                const token = await getToken();
+                                                if (token) await initiateOAuth(id as 'github' | 'linkedin', token);
+                                            }}
                                             style={{
                                                 padding: '0.5rem 1rem',
                                                 border: 'none',

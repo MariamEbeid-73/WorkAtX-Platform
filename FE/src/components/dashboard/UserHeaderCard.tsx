@@ -7,12 +7,12 @@ import {
 } from 'antd';
 import {
   EditOutlined,
-  GithubOutlined,
   SafetyCertificateOutlined,
   FileTextOutlined,
   ReloadOutlined,
   CheckCircleFilled,
   MessageOutlined,
+  LinkOutlined,
 } from '@ant-design/icons';
 import type { UserProfile } from '../../types/profile';
 import { useToggleOpenToWork } from '../../hooks/useProfile';
@@ -36,11 +36,11 @@ export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
 
   // Modal states
   const [showCompleteProfile, setShowCompleteProfile] = useState(false);
-  const [showResumeViewer, setShowResumeViewer]       = useState(false);
-  const [showReanalyze, setShowReanalyze]             = useState(false);
+  const [showResumeViewer, setShowResumeViewer] = useState(false);
+  const [showReanalyze, setShowReanalyze] = useState(false);
 
   // Resume URL fetched on demand
-  const [resumeUrl, setResumeUrl]           = useState<string | undefined>(undefined);
+  const [resumeUrl, setResumeUrl] = useState<string | undefined>(undefined);
   const [resumeFetching, setResumeFetching] = useState(false);
 
   // Optimistic local state for the toggle
@@ -51,8 +51,7 @@ export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
     .map((n) => n![0].toUpperCase())
     .join('') || 'U';
 
-  const handle   = profile?.handle   || `@${user?.firstName?.toLowerCase() ?? 'user'}.dev`;
-  const github   = profile?.socialLinks?.github?.replace('https://github.com/', '') || 'link-github';
+  const handle = profile?.handle || `@${user?.firstName?.toLowerCase() ?? 'user'}.dev`;
   const completion = profile?.profileCompletionPct ?? 0;
   const isVerified = profile?.collegeVerification?.isVerified ?? false;
 
@@ -146,20 +145,21 @@ export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
               {handle}
             </Text>
 
-            {/* GitHub tag */}
+            {/* Connected Accounts tag */}
             <Flex align="center" gap={8} wrap="wrap">
               <Tag
-                icon={<GithubOutlined />}
+                icon={<LinkOutlined />}
+                onClick={() => navigate('/connected-accounts')}
                 style={{
                   background: 'rgba(255,255,255,0.05)',
                   border: '1px solid rgba(255,255,255,0.12)',
                   color: 'var(--text-secondary)',
                   borderRadius: 8,
-                  fontFamily: 'var(--font-mono)',
                   fontSize: 12,
+                  cursor: 'pointer',
                 }}
               >
-                {github}
+                Connected Accounts
               </Tag>
 
               {/* College verification badge */}
@@ -182,7 +182,7 @@ export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
                     fontSize: 12,
                     cursor: 'pointer',
                   }}
-                  onClick={() => {/* open verification modal */}}
+                  onClick={() => {/* open verification modal */ }}
                 >
                   {isVerified ? 'College Verified' : 'Verify Your College'}
                 </Tag>
@@ -300,20 +300,20 @@ export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
       </Flex>
 
       {/* Modals */}
-      <CompleteProfileModal 
-        open={showCompleteProfile} 
-        onClose={() => setShowCompleteProfile(false)} 
+      <CompleteProfileModal
+        open={showCompleteProfile}
+        onClose={() => setShowCompleteProfile(false)}
       />
-      <ResumeViewerModal 
-        open={showResumeViewer} 
-        onClose={() => setShowResumeViewer(false)} 
+      <ResumeViewerModal
+        open={showResumeViewer}
+        onClose={() => setShowResumeViewer(false)}
         resumeUrl={resumeUrl}
       />
-      <OnboardingModal 
-        open={showReanalyze} 
+      <OnboardingModal
+        open={showReanalyze}
         closable={true}
         onClose={() => setShowReanalyze(false)}
-        onComplete={() => setShowReanalyze(false)} 
+        onComplete={() => setShowReanalyze(false)}
       />
     </Card>
   );

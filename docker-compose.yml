@@ -61,7 +61,7 @@ services:
       OAuth__LinkedIn__ClientId: "${LINKEDIN_CLIENT_ID}"
       OAuth__LinkedIn__ClientSecret: "${LINKEDIN_CLIENT_SECRET}"
       OAuth__LinkedIn__RedirectUri: "http://localhost:5000/oauth/linkedin/callback"
-      OAuth__FrontendCallbackUrl: "${VITE_API_URL:-http://localhost:5173}/connected-accounts"
+      OAuth__FrontendCallbackUrl: "${FRONTEND_URL:-http://localhost:4200}/connected-accounts"
       Encryption__Key: "${ENCRYPTION_KEY}"
     ports:
       - "5000:5000"

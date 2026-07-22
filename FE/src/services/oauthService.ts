@@ -18,12 +18,11 @@ async function authFetch<T>(path: string, token: string, init: RequestInit = {})
 }
 
 /**
- * Navigates the browser to the backend authorize endpoint.
- * The backend redirects to GitHub/LinkedIn consent screen.
- * No token needed — this is a full page navigation.
+ * Fetches the OAuth authorization URL from the backend and redirects the browser.
  */
-export function initiateOAuth(provider: 'github' | 'linkedin'): void {
-    window.location.href = `${config.apiUrl}/oauth/${provider}/authorize`;
+export async function initiateOAuth(provider: 'github' | 'linkedin', token: string): Promise<void> {
+    const res = await authFetch<{ url: string }>(`/oauth/${provider}/authorize`, token, { method: 'POST' });
+    window.location.href = res.url;
 }
 
 /** Returns the list of providers the current user has connected. */

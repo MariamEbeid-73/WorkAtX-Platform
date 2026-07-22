@@ -2,6 +2,7 @@ import { Card, Button, Flex, Typography, Tag } from 'antd';
 import { GithubOutlined, LinkOutlined, CheckCircleFilled } from '@ant-design/icons';
 import type { GitHubIdentity } from '../../types/profile';
 import { initiateOAuth } from '../../services/oauthService';
+import { useAuth } from '@clerk/react';
 
 const { Text, Title } = Typography;
 
@@ -15,6 +16,7 @@ export function DeveloperIdentityCard({
   identity,
   isLoading,
 }: DeveloperIdentityCardProps) {
+  const { getToken } = useAuth();
   const isLinked = identity?.isLinked ?? false;
 
   return (
@@ -115,7 +117,10 @@ export function DeveloperIdentityCard({
           <Button
             type="default"
             icon={<GithubOutlined />}
-            onClick={() => initiateOAuth('github')}
+            onClick={async () => {
+              const token = await getToken();
+              if (token) await initiateOAuth('github', token);
+            }}
             style={{
               background: 'rgba(255,255,255,0.06)',
               border: '1px solid rgba(255,255,255,0.14)',
