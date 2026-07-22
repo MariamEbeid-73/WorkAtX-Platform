@@ -47,7 +47,7 @@ services:
     container_name: workx-be
     environment:
       ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Development}"
-      Clerk__Authority: "${CLERK_AUTHORITY}"
+      Clerk__Authority: "${CLERK_AUTHORITY:-https://factual-reptile-75.clerk.accounts.dev}"
       ConnectionStrings__DefaultConnection: >
         Host=db;Port=5432;Database=${DB_NAME:-WorkXDb}; Username=${DB_USER:-postgres};Password=${DB_PASSWORD:-WorkX@Password2026};
       S3__Endpoint: "https://minio:9000"
@@ -55,14 +55,14 @@ services:
       S3__AccessKey: "${AWS_ACCESS_KEY_ID:-minioadmin}"
       S3__SecretKey: "${AWS_SECRET_ACCESS_KEY:-minioadmin}"
       S3__Region: "${AWS_REGION:-us-east-1}"
-      OAuth__GitHub__ClientId: "${GITHUB_CLIENT_ID}"
-      OAuth__GitHub__ClientSecret: "${GITHUB_CLIENT_SECRET}"
+      OAuth__GitHub__ClientId: "${GITHUB_CLIENT_ID:-Ov23liacWpZf9ZDCpiGt}"
+      OAuth__GitHub__ClientSecret: "${GITHUB_CLIENT_SECRET:-47aaaa6b4d8230ecd1d6f1306ce8b7730376386b}"
       OAuth__GitHub__RedirectUri: "http://localhost:5000/oauth/github/callback"
-      OAuth__LinkedIn__ClientId: "${LINKEDIN_CLIENT_ID}"
-      OAuth__LinkedIn__ClientSecret: "${LINKEDIN_CLIENT_SECRET}"
+      OAuth__LinkedIn__ClientId: "${LINKEDIN_CLIENT_ID:-784cl32dcq4gfj}"
+      OAuth__LinkedIn__ClientSecret: "${LINKEDIN_CLIENT_SECRET:-WPL_AP1.iBx2BuHYYljtPDIR.+zRkJQ==}"
       OAuth__LinkedIn__RedirectUri: "http://localhost:5000/oauth/linkedin/callback"
       OAuth__FrontendCallbackUrl: "${FRONTEND_URL:-http://localhost:4200}/connected-accounts"
-      Encryption__Key: "${ENCRYPTION_KEY}"
+      Encryption__Key: "${ENCRYPTION_KEY:-2JGGQQujI4auE8XfUHisIVNJ3AGayFN4ygljCRFmgms=}"
     ports:
       - "5000:5000"
     depends_on:
@@ -84,13 +84,7 @@ services:
       minio:
         condition: service_healthy
     entrypoint: >
-      /bin/sh -c "
-      /usr/bin/mc --insecure alias set myminio https://minio:9000 \$MINIO_ROOT_USER \$MINIO_ROOT_PASSWORD;
-      /usr/bin/mc --insecure mb myminio/\$S3_BUCKET_NAME --ignore-existing;
-      /usr/bin/mc --insecure anonymous set download myminio/\$S3_BUCKET_NAME;
-      echo 'Bucket created and configured successfully.';
-      exit 0;
-      "
+      /bin/sh -c " /usr/bin/mc --insecure alias set myminio https://minio:9000 \$MINIO_ROOT_USER \$MINIO_ROOT_PASSWORD; /usr/bin/mc --insecure mb myminio/\$S3_BUCKET_NAME --ignore-existing; /usr/bin/mc --insecure anonymous set download myminio/\$S3_BUCKET_NAME; echo 'Bucket created and configured successfully.'; exit 0; "
 
   fe:
     build:
@@ -102,7 +96,7 @@ services:
     container_name: workx-fe
     environment:
       VITE_API_URL: "${VITE_API_URL:-http://localhost:5000}"
-      VITE_CLERK_PUBLISHABLE_KEY: "${VITE_CLERK_PUBLISHABLE_KEY}"
+      VITE_CLERK_PUBLISHABLE_KEY: "${VITE_CLERK_PUBLISHABLE_KEY:-pk_test_ZmFjdHVhbC1yZXB0aWxlLTc1LmNsZXJrLmFjY291bnRzLmRldiQ}"
     ports:
       - "4200:80"
     depends_on:
