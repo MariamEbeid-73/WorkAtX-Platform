@@ -3,7 +3,6 @@ import { useAuth } from '@clerk/react';
 import {
   getProfile,
   getScoreBreakdown,
-  reanalyzeProfile,
   toggleOpenToWork,
   getGitHubIdentity,
   submitFeedback,
@@ -136,35 +135,6 @@ export function useGitHubIdentityQuery(): QueryState<GitHubIdentity> {
   }, [getToken, tick]);
 
   return { data, isLoading, error, refetch };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// useReanalyzeProfile — POST /api/profile/analyze
-// ─────────────────────────────────────────────────────────────────────────────
-export function useReanalyzeProfile(): MutationState<{ jobId: string }> {
-  const { getToken } = useAuth();
-  const [isPending, setIsPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const reset = useCallback(() => setError(null), []);
-
-  const mutate = useCallback(async (): Promise<{ jobId: string } | null> => {
-    setIsPending(true);
-    setError(null);
-    try {
-      const token = await getToken();
-      if (!token) throw new Error('Not authenticated');
-      const res = await reanalyzeProfile(token);
-      return { jobId: res.data.jobId };
-    } catch (err) {
-      setError((err as Error).message);
-      return null;
-    } finally {
-      setIsPending(false);
-    }
-  }, [getToken]);
-
-  return { mutate, isPending, error, reset };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

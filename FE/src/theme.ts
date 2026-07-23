@@ -242,19 +242,3 @@ export const clerkAppearance = {
     providerIcon__github: { filter: 'invert(1)' },
   },
 } as const;
-
-const theme = {
-  colors,
-  spacing,
-  typography,
-  radius,
-  shadows,
-  animation,
-  glass,
-  breakpoints,
-  zIndex,
-  clerkAppearance,
-} as const;
-
-export type Theme = typeof theme;
-export default theme;

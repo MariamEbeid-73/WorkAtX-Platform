@@ -160,7 +160,6 @@ export function Dashboard() {
           <DeveloperIdentityCard
             identity={identity}
             isLoading={identityLoading}
-            onVerify={refetchIdentity}
           />
         </div>
 

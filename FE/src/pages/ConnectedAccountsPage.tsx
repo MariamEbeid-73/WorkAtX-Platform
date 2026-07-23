@@ -1,151 +1,189 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@clerk/react';
+import { Card, Button, Flex, Typography, Tag, Spin } from 'antd';
+import { GithubOutlined, LinkedinOutlined, CheckCircleFilled } from '@ant-design/icons';
 import { getConnections, initiateOAuth, disconnect } from '../services/oauthService';
 import type { ConnectedProvider } from '../types/oauth';
 
+const { Title, Text } = Typography;
+
 const PROVIDERS = [
-    {
-        id: 'github' as const,
-        label: 'GitHub',
-        description: 'Import repositories and verify developer activity',
-        icon: '🐙',
-    },
-    {
-        id: 'linkedin' as const,
-        label: 'LinkedIn',
-        description: 'Import work history, education, and skills',
-        icon: '💼',
-    },
+  {
+    id: 'github' as const,
+    label: 'GitHub',
+    description: 'Import repositories and verify developer activity',
+    icon: <GithubOutlined style={{ fontSize: 28 }} />,
+  },
+  {
+    id: 'linkedin' as const,
+    label: 'LinkedIn',
+    description: 'Import work history, education, and skills',
+    icon: <LinkedinOutlined style={{ fontSize: 28, color: '#0077B5' }} />,
+  },
 ];
 
 export function ConnectedAccountsPage() {
-    const { getToken } = useAuth();
-    const [connections, setConnections] = useState<ConnectedProvider[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [disconnecting, setDisconnecting] = useState<string | null>(null);
-    const [error, setError] = useState<string | null>(null);
+  const { getToken } = useAuth();
+  const [connections, setConnections] = useState<ConnectedProvider[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-    const loadConnections = useCallback(async () => {
-        try {
-            setLoading(true);
-            setError(null);
-            const token = await getToken();
-            const data = await getConnections(token!);
-            setConnections(data);
-        } catch (e) {
-            setError('Failed to load connected accounts. Please try again.');
-        } finally {
-            setLoading(false);
-        }
-    }, [getToken]);
+  const loadConnections = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const token = await getToken();
+      const data = await getConnections(token!);
+      setConnections(data);
+    } catch {
+      setError('Failed to load connected accounts.');
+    } finally {
+      setLoading(false);
+    }
+  }, [getToken]);
 
-    useEffect(() => { loadConnections(); }, [loadConnections]);
+  useEffect(() => { loadConnections(); }, [loadConnections]);
 
-    const handleDisconnect = async (provider: string) => {
-        if (!confirm(`Disconnect ${provider}? This will remove access to your ${provider} data.`)) return;
-        try {
-            setDisconnecting(provider);
-            const token = await getToken();
-            await disconnect(token!, provider);
-            setConnections(prev => prev.filter(c => c.provider !== provider));
-        } catch {
-            setError(`Failed to disconnect ${provider}.`);
-        } finally {
-            setDisconnecting(null);
-        }
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type !== 'oauth-connected') return;
+      loadConnections();
     };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [loadConnections]);
 
-    const isConnected = (provider: string) => connections.some(c => c.provider === provider);
-    const getConnection = (provider: string) => connections.find(c => c.provider === provider);
+  const handleDisconnect = async (provider: string) => {
+    if (!confirm(`Disconnect ${provider}? This will remove access to your ${provider} data.`)) return;
+    try {
+      setDisconnecting(provider);
+      const token = await getToken();
+      await disconnect(token!, provider);
+      setConnections(prev => prev.filter(c => c.provider !== provider));
+    } catch {
+      setError(`Failed to disconnect ${provider}.`);
+    } finally {
+      setDisconnecting(null);
+    }
+  };
 
-    return (
-        <div style={{ maxWidth: 640, margin: '0 auto', padding: '2rem 1rem' }}>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '0.5rem' }}>
-                Connected Accounts
-            </h1>
-            <p style={{ color: '#666', marginBottom: '2rem' }}>
-                Link your accounts so WorkX can import your data for CV analysis.
-            </p>
+  const isConnected = (provider: string) => connections.some(c => c.provider === provider);
+  const getConnection = (provider: string) => connections.find(c => c.provider === provider);
 
-            {error && (
-                <div style={{ background: '#fee', border: '1px solid #f88', borderRadius: 8, padding: '0.75rem 1rem', marginBottom: '1.5rem', color: '#c00' }}>
-                    {error}
-                </div>
-            )}
+  return (
+    <div style={{ maxWidth: 600, margin: '0 auto' }}>
+      <Flex vertical gap={8} style={{ marginBottom: 24 }}>
+        <Title level={3} style={{ margin: 0, color: 'var(--text-primary)' }}>
+          Connected Accounts
+        </Title>
+        <Text style={{ color: 'var(--text-secondary)' }}>
+          Link your accounts so WorkX can import your data for CV analysis.
+        </Text>
+      </Flex>
 
-            {loading ? (
-                <p>Loading...</p>
-            ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    {PROVIDERS.map(({ id, label, description, icon }) => {
-                        const connected = isConnected(id);
-                        const conn = getConnection(id);
-                        return (
-                            <div
-                                key={id}
-                                style={{
-                                    border: `2px solid ${connected ? '#4ade80' : '#e5e7eb'}`,
-                                    borderRadius: 12,
-                                    padding: '1.25rem',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    gap: '1rem',
-                                }}
-                            >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                    <span style={{ fontSize: '1.75rem' }}>{icon}</span>
-                                    <div>
-                                        <div style={{ fontWeight: 600 }}>{label}</div>
-                                        <div style={{ fontSize: '0.85rem', color: '#888' }}>
-                                            {connected && conn?.username
-                                                ? `Connected as @${conn.username}`
-                                                : description}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div>
-                                    {connected ? (
-                                        <button
-                                            onClick={() => handleDisconnect(id)}
-                                            disabled={disconnecting === id}
-                                            style={{
-                                                padding: '0.5rem 1rem',
-                                                border: '1px solid #f87171',
-                                                borderRadius: 8,
-                                                background: 'white',
-                                                color: '#ef4444',
-                                                cursor: 'pointer',
-                                                fontWeight: 500,
-                                            }}
-                                        >
-                                            {disconnecting === id ? 'Disconnecting…' : 'Disconnect'}
-                                        </button>
-                                    ) : (
-                                        <button
-                                            onClick={async () => {
-                                                const token = await getToken();
-                                                if (token) await initiateOAuth(id as 'github' | 'linkedin', token);
-                                            }}
-                                            style={{
-                                                padding: '0.5rem 1rem',
-                                                border: 'none',
-                                                borderRadius: 8,
-                                                background: '#6366f1',
-                                                color: 'white',
-                                                cursor: 'pointer',
-                                                fontWeight: 500,
-                                            }}
-                                        >
-                                            Connect
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
+      {error && (
+        <div style={{
+          background: 'rgba(239,68,68,0.10)',
+          border: '1px solid rgba(239,68,68,0.25)',
+          borderRadius: 10,
+          padding: '12px 16px',
+          marginBottom: 20,
+          color: '#EF4444',
+          fontSize: 13,
+        }}>
+          {error}
         </div>
-    );
+      )}
+
+      {loading ? (
+        <Flex justify="center" style={{ padding: 48 }}>
+          <Spin size="large" />
+        </Flex>
+      ) : (
+        <Flex vertical gap={12}>
+          {PROVIDERS.map(({ id, label, description, icon }) => {
+            const connected = isConnected(id);
+            const conn = getConnection(id);
+            return (
+              <Card
+                key={id}
+                bordered
+                style={{
+                  background: connected ? 'rgba(16,185,129,0.04)' : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${connected ? 'rgba(16,185,129,0.25)' : 'rgba(255,255,255,0.08)'}`,
+                  borderRadius: 16,
+                }}
+                bodyStyle={{ padding: '16px 20px' }}
+              >
+                <Flex align="center" justify="space-between" gap={16}>
+                  <Flex align="center" gap={14}>
+                    <div style={{
+                      width: 48, height: 48, borderRadius: 12,
+                      background: connected ? 'rgba(16,185,129,0.10)' : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${connected ? 'rgba(16,185,129,0.25)' : 'rgba(255,255,255,0.10)'}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0,
+                    }}>
+                      {icon}
+                    </div>
+                    <Flex vertical gap={2}>
+                      <Text style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>
+                        {label}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                        {connected && conn?.username
+                          ? `Connected as @${conn.username}`
+                          : description}
+                      </Text>
+                    </Flex>
+                  </Flex>
+                  {connected ? (
+                    <Flex align="center" gap={10}>
+                      <Tag
+                        icon={<CheckCircleFilled />}
+                        style={{
+                          background: 'rgba(16,185,129,0.12)',
+                          border: '1px solid rgba(16,185,129,0.30)',
+                          color: '#10B981', borderRadius: 8, fontSize: 12,
+                        }}
+                      >
+                        Connected
+                      </Tag>
+                      <Button
+                        danger
+                        size="small"
+                        loading={disconnecting === id}
+                        onClick={() => handleDisconnect(id)}
+                        style={{ borderRadius: 8 }}
+                      >
+                        Disconnect
+                      </Button>
+                    </Flex>
+                  ) : (
+                    <Button
+                      icon={id === 'github' ? <GithubOutlined /> : <LinkedinOutlined />}
+                      onClick={async () => {
+                        const token = await getToken();
+                        if (token) await initiateOAuth(id, token, true);
+                      }}
+                      style={{
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(255,255,255,0.14)',
+                        color: 'var(--text-primary)',
+                        borderRadius: 10, fontWeight: 600, height: 36,
+                      }}
+                    >
+                      Connect
+                    </Button>
+                  )}
+                </Flex>
+              </Card>
+            );
+          })}
+        </Flex>
+      )}
+    </div>
+  );
 }

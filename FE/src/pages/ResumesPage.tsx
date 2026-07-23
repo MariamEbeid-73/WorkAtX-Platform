@@ -1,214 +1,226 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@clerk/react';
+import { Card, Button, Flex, Typography, Upload, Progress, message, Spin, Popconfirm } from 'antd';
+import { UploadOutlined, DownloadOutlined, DeleteOutlined, FilePdfOutlined, FileTextOutlined } from '@ant-design/icons';
 import {
-    createUploadIntent,
-    uploadToMinIO,
-    confirmUpload,
-    listResumes,
-    getDownloadUrl,
-    deleteResume,
+  createUploadIntent,
+  uploadToMinIO,
+  confirmUpload,
+  listResumes,
+  getDownloadUrl,
+  deleteResume,
 } from '../services/resumeService';
 import type { ResumeFile } from '../types/resume';
+
+const { Title, Text } = Typography;
+const { Dragger } = Upload;
 
 const ALLOWED_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
 const MAX_SIZE_MB = 10;
 
-type UploadState = { status: 'idle' } | { status: 'uploading'; progress: number } | { status: 'error'; message: string };
-
 export function ResumesPage() {
-    const { getToken } = useAuth();
-    const [resumes, setResumes] = useState<ResumeFile[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [uploadState, setUploadState] = useState<UploadState>({ status: 'idle' });
-    const [deleting, setDeleting] = useState<string | null>(null);
-    const [dragging, setDragging] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
+  const { getToken } = useAuth();
+  const [resumes, setResumes] = useState<ResumeFile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [msgApi, ctx] = message.useMessage();
 
-    const loadResumes = useCallback(async () => {
-        try {
-            setLoading(true);
-            const token = await getToken();
-            const data = await listResumes(token!);
-            setResumes(data);
-        } finally {
-            setLoading(false);
-        }
-    }, [getToken]);
+  const loadResumes = useCallback(async () => {
+    try {
+      setLoading(true);
+      const token = await getToken();
+      const data = await listResumes(token!);
+      setResumes(data);
+    } finally {
+      setLoading(false);
+    }
+  }, [getToken]);
 
-    useEffect(() => { loadResumes(); }, [loadResumes]);
+  useEffect(() => { loadResumes(); }, [loadResumes]);
 
-    const handleFile = async (file: File) => {
-        if (!ALLOWED_TYPES.includes(file.type)) {
-            setUploadState({ status: 'error', message: 'Only PDF and DOCX files are allowed.' });
-            return;
-        }
-        if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-            setUploadState({ status: 'error', message: `File must be under ${MAX_SIZE_MB} MB.` });
-            return;
-        }
+  const handleFile = async (file: File) => {
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      msgApi.error('Only PDF and DOCX files are allowed.');
+      return;
+    }
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      msgApi.error(`File must be under ${MAX_SIZE_MB} MB.`);
+      return;
+    }
 
-        try {
-            setUploadState({ status: 'uploading', progress: 0 });
-            const token = await getToken();
+    try {
+      setUploading(true);
+      setUploadProgress(0);
+      const token = await getToken();
+      const { resumeId, uploadUrl } = await createUploadIntent(token!, file);
+      await uploadToMinIO(uploadUrl, file, (pct) => setUploadProgress(pct));
+      await confirmUpload(token!, resumeId);
+      setUploading(false);
+      setUploadProgress(0);
+      msgApi.success('Resume uploaded!');
+      await loadResumes();
+    } catch (e: any) {
+      setUploading(false);
+      msgApi.error(e.message ?? 'Upload failed.');
+    }
+  };
 
-            // Step 1: get pre-signed URL
-            const { resumeId, uploadUrl } = await createUploadIntent(token!, file);
+  const handleDelete = async (id: string) => {
+    try {
+      setDeleting(id);
+      const token = await getToken();
+      await deleteResume(token!, id);
+      setResumes(prev => prev.filter(r => r.id !== id));
+      msgApi.success('Resume deleted.');
+    } catch {
+      msgApi.error('Failed to delete resume.');
+    } finally {
+      setDeleting(null);
+    }
+  };
 
-            // Step 2: upload directly to MinIO
-            await uploadToMinIO(uploadUrl, file, (pct) =>
-                setUploadState({ status: 'uploading', progress: pct })
-            );
+  const handleDownload = async (id: string, fileName: string) => {
+    const token = await getToken();
+    const { downloadUrl } = await getDownloadUrl(token!, id);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = fileName;
+    a.click();
+  };
 
-            // Step 3: confirm with backend
-            await confirmUpload(token!, resumeId);
+  const formatSize = (bytes: number) =>
+    bytes < 1024 * 1024
+      ? `${(bytes / 1024).toFixed(1)} KB`
+      : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
-            setUploadState({ status: 'idle' });
-            await loadResumes(); // refresh the list
-        } catch (e: any) {
-            setUploadState({ status: 'error', message: e.message ?? 'Upload failed.' });
-        }
-    };
+  return (
+    <div style={{ maxWidth: 640, margin: '0 auto' }}>
+      {ctx}
+      <Flex vertical gap={8} style={{ marginBottom: 24 }}>
+        <Title level={3} style={{ margin: 0, color: 'var(--text-primary)' }}>
+          Resumes
+        </Title>
+        <Text style={{ color: 'var(--text-secondary)' }}>
+          Upload your CV for AI analysis. PDF or DOCX, max {MAX_SIZE_MB} MB.
+        </Text>
+      </Flex>
 
-    const handleDrop = (e: React.DragEvent) => {
-        e.preventDefault();
-        setDragging(false);
-        const file = e.dataTransfer.files[0];
-        if (file) handleFile(file);
-    };
+      <Dragger
+        name="resume"
+        accept=".pdf,.docx"
+        maxCount={1}
+        disabled={uploading}
+        beforeUpload={(file) => { handleFile(file); return false; }}
+        showUploadList={false}
+        style={{
+          background: 'rgba(255,255,255,0.02)',
+          border: '2px dashed rgba(139,92,246,0.30)',
+          borderRadius: 16,
+          marginBottom: 24,
+        }}
+      >
+        <Flex vertical align="center" gap={12} style={{ padding: '24px 16px' }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: 14,
+            background: 'rgba(139,92,246,0.10)',
+            border: '1px solid rgba(139,92,246,0.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <UploadOutlined style={{ fontSize: 24, color: 'var(--color-primary-400)' }} />
+          </div>
+          <Flex vertical align="center" gap={4}>
+            <Text style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+              Drop your resume here or click to browse
+            </Text>
+            <Text style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+              PDF or DOCX · Max {MAX_SIZE_MB} MB
+            </Text>
+          </Flex>
+        </Flex>
+      </Dragger>
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Delete this resume? This cannot be undone.')) return;
-        try {
-            setDeleting(id);
-            const token = await getToken();
-            await deleteResume(token!, id);
-            setResumes(prev => prev.filter(r => r.id !== id));
-        } finally {
-            setDeleting(null);
-        }
-    };
+      {uploading && (
+        <Progress
+          percent={uploadProgress}
+          strokeColor={{ '0%': '#8B5CF6', '100%': '#06B6D4' }}
+          trailColor="rgba(255,255,255,0.06)"
+          style={{ marginBottom: 24 }}
+        />
+      )}
 
-    const handleDownload = async (id: string, fileName: string) => {
-        const token = await getToken();
-        const { downloadUrl } = await getDownloadUrl(token!, id);
-        const a = document.createElement('a');
-        a.href = downloadUrl;
-        a.download = fileName;
-        a.click();
-    };
-
-    const formatSize = (bytes: number) =>
-        bytes < 1024 * 1024
-            ? `${(bytes / 1024).toFixed(1)} KB`
-            : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-
-    return (
-        <div style={{ maxWidth: 700, margin: '0 auto', padding: '2rem 1rem' }}>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '0.5rem' }}>Resumes</h1>
-            <p style={{ color: '#666', marginBottom: '2rem' }}>
-                Upload your CV for AI analysis. PDF or DOCX, max 10 MB.
-            </p>
-
-            {/* Drop Zone */}
-            <div
-                onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-                onDragLeave={() => setDragging(false)}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                style={{
-                    border: `2px dashed ${dragging ? '#6366f1' : '#d1d5db'}`,
-                    borderRadius: 12,
-                    padding: '2.5rem',
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    background: dragging ? '#f5f3ff' : '#fafafa',
-                    transition: 'all 0.2s',
-                    marginBottom: '1.5rem',
-                }}
+      {loading ? (
+        <Flex justify="center" style={{ padding: 48 }}>
+          <Spin size="large" />
+        </Flex>
+      ) : resumes.length === 0 ? (
+        <Flex justify="center" style={{ padding: 32 }}>
+          <Text style={{ color: 'var(--text-tertiary)' }}>No resumes uploaded yet.</Text>
+        </Flex>
+      ) : (
+        <Flex vertical gap={10}>
+          {resumes.map((r) => (
+            <Card
+              key={r.id}
+              bordered
+              style={{
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 14,
+              }}
+              bodyStyle={{ padding: '14px 18px' }}
             >
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf,.docx"
-                    style={{ display: 'none' }}
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-                />
-                <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📄</div>
-                <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
-                    {dragging ? 'Drop to upload' : 'Drag & drop or click to browse'}
-                </div>
-                <div style={{ fontSize: '0.85rem', color: '#888' }}>PDF or DOCX · Max 10 MB</div>
-            </div>
-
-            {/* Upload Progress */}
-            {uploadState.status === 'uploading' && (
-                <div style={{ marginBottom: '1.5rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', fontSize: '0.85rem' }}>
-                        <span>Uploading…</span>
-                        <span>{uploadState.progress}%</span>
-                    </div>
-                    <div style={{ height: 8, background: '#e5e7eb', borderRadius: 99 }}>
-                        <div style={{ height: '100%', width: `${uploadState.progress}%`, background: '#6366f1', borderRadius: 99, transition: 'width 0.2s' }} />
-                    </div>
-                </div>
-            )}
-
-            {/* Error State */}
-            {uploadState.status === 'error' && (
-                <div style={{ background: '#fee', border: '1px solid #f88', borderRadius: 8, padding: '0.75rem 1rem', marginBottom: '1.5rem', color: '#c00' }}>
-                    {uploadState.message}
-                    <button onClick={() => setUploadState({ status: 'idle' })} style={{ marginLeft: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#c00', fontWeight: 600 }}>✕</button>
-                </div>
-            )}
-
-            {/* Resume List */}
-            {loading ? (
-                <p>Loading resumes…</p>
-            ) : resumes.length === 0 ? (
-                <p style={{ color: '#888', textAlign: 'center', padding: '2rem' }}>No resumes uploaded yet.</p>
-            ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {resumes.map((r) => (
-                        <div
-                            key={r.id}
-                            style={{
-                                border: '1px solid #e5e7eb',
-                                borderRadius: 10,
-                                padding: '1rem 1.25rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: '1rem',
-                            }}
-                        >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
-                                <span style={{ fontSize: '1.5rem' }}>{r.contentType === 'application/pdf' ? '📕' : '📘'}</span>
-                                <div style={{ minWidth: 0 }}>
-                                    <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.fileName}</div>
-                                    <div style={{ fontSize: '0.8rem', color: '#888' }}>
-                                        {formatSize(r.sizeBytes)} · {new Date(r.uploadedAt).toLocaleDateString()}
-                                    </div>
-                                </div>
-                            </div>
-                            <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-                                <button
-                                    onClick={() => handleDownload(r.id, r.fileName)}
-                                    style={{ padding: '0.4rem 0.9rem', border: '1px solid #d1d5db', borderRadius: 8, background: 'white', cursor: 'pointer' }}
-                                >
-                                    Download
-                                </button>
-                                <button
-                                    onClick={() => handleDelete(r.id)}
-                                    disabled={deleting === r.id}
-                                    style={{ padding: '0.4rem 0.9rem', border: '1px solid #f87171', borderRadius: 8, background: 'white', color: '#ef4444', cursor: 'pointer' }}
-                                >
-                                    {deleting === r.id ? '…' : 'Delete'}
-                                </button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
+              <Flex align="center" justify="space-between" gap={12}>
+                <Flex align="center" gap={12} style={{ minWidth: 0 }}>
+                  {r.contentType === 'application/pdf'
+                    ? <FilePdfOutlined style={{ fontSize: 24, color: '#EF4444' }} />
+                    : <FileTextOutlined style={{ fontSize: 24, color: '#3B82F6' }} />
+                  }
+                  <Flex vertical gap={2} style={{ minWidth: 0 }}>
+                    <Text
+                      style={{ fontWeight: 600, color: 'var(--text-primary)' }}
+                      ellipsis
+                    >
+                      {r.fileName}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                      {formatSize(r.sizeBytes)} · {new Date(r.uploadedAt).toLocaleDateString()}
+                    </Text>
+                  </Flex>
+                </Flex>
+                <Flex gap={8} style={{ flexShrink: 0 }}>
+                  <Button
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    onClick={() => handleDownload(r.id, r.fileName)}
+                    style={{ borderRadius: 8 }}
+                  >
+                    Download
+                  </Button>
+                  <Popconfirm
+                    title="Delete this resume?"
+                    description="This cannot be undone."
+                    onConfirm={() => handleDelete(r.id)}
+                    okText="Delete"
+                    cancelText="Cancel"
+                  >
+                    <Button
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                      loading={deleting === r.id}
+                      style={{ borderRadius: 8 }}
+                    >
+                      Delete
+                    </Button>
+                  </Popconfirm>
+                </Flex>
+              </Flex>
+            </Card>
+          ))}
+        </Flex>
+      )}
+    </div>
+  );
 }

@@ -9,7 +9,6 @@ const { Text, Title } = Typography;
 interface DeveloperIdentityCardProps {
   identity: GitHubIdentity | null;
   isLoading: boolean;
-  onVerify?: () => void; // kept for back-compat; button now calls initiateOAuth directly
 }
 
 export function DeveloperIdentityCard({
