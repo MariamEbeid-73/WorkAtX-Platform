@@ -10,6 +10,7 @@ import { OnboardingModal }       from '../components/OnboardingModal';
 import { FullScreenLoader }      from '../components/FullScreenLoader';
 import { useProfileQuery, useScoresQuery, useGitHubIdentityQuery } from '../hooks/useProfile';
 import { getConnections } from '../services/oauthService';
+import { listResumes } from '../services/resumeService';
 import type { ConnectedProvider } from '../types/oauth';
 
 const { Title, Text } = Typography;
@@ -19,8 +20,8 @@ export function Dashboard() {
   const { getToken } = useAuth();
 
   // Data hooks (gracefully degrade when backend is offline)
-  const { data: profile,  isLoading: profileLoading,  error: profileError  } = useProfileQuery();
-  const { data: scores,   isLoading: scoresLoading                          } = useScoresQuery();
+  const { data: profile,  isLoading: profileLoading,  error: profileError,  refetch: refetchProfile  } = useProfileQuery();
+  const { data: scores,   isLoading: scoresLoading,                           refetch: refetchScores   } = useScoresQuery();
   const { data: identity, isLoading: identityLoading, refetch: refetchIdentity } = useGitHubIdentityQuery();
 
   // OAuth connections (GitHub + LinkedIn)
@@ -42,20 +43,60 @@ export function Dashboard() {
     }
   }, [getToken]);
 
+  const refreshAll = useCallback(() => {
+    refetchProfile();
+    refetchScores();
+    refetchIdentity();
+    loadConnections();
+  }, [refetchProfile, refetchScores, refetchIdentity, loadConnections]);
+
+  const handleOnboardingComplete = () => {
+    setShowOnboarding(false);
+    refreshAll();
+  };
+
   useEffect(() => { loadConnections(); }, [loadConnections]);
 
   const linkedInConnection = connections.find(c => c.provider === 'linkedin') ?? null;
 
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
 
   useEffect(() => {
-    if (!profileLoading && !profileError) {
-      // If we successfully loaded profile but no GitHub is linked, show onboarding wizard
-      if (!profile?.socialLinks?.github) {
-        setShowOnboarding(true);
-      }
+    if (onboardingChecked) return;
+    if (profileLoading || connectionsLoading) return;
+    if (profileError) {
+      setOnboardingChecked(true);
+      return;
     }
-  }, [profile, profileLoading, profileError]);
+
+    const hasGithub = !!(profile?.socialLinks?.github || connections.find(c => c.provider === 'github'));
+    const hasLinkedin = !!connections.find(c => c.provider === 'linkedin');
+
+    const checkOnboarding = async () => {
+      try {
+        const token = await getToken();
+        if (!token) {
+          setOnboardingChecked(true);
+          return;
+        }
+        const resumes = await listResumes(token);
+        const hasResume = resumes.length > 0;
+
+        if (!hasGithub && !hasLinkedin && !hasResume) {
+          setShowOnboarding(true);
+        }
+      } catch {
+        if (!hasGithub && !hasLinkedin) {
+          setShowOnboarding(true);
+        }
+      } finally {
+        setOnboardingChecked(true);
+      }
+    };
+
+    checkOnboarding();
+  }, [profile, profileLoading, profileError, connections, connectionsLoading, getToken, onboardingChecked]);
 
   const greeting = () => {
     const h = new Date().getHours();
@@ -110,7 +151,7 @@ export function Dashboard() {
           <Skeleton active paragraph={{ rows: 4 }} style={{ padding: 24, borderRadius: 20, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }} />
         ) : (
           <div className="animate-fade-in" style={{ animationDelay: '0ms' }}>
-            <UserHeaderCard profile={profile} isLoading={false} />
+            <UserHeaderCard profile={profile} isLoading={false} onProfileUpdate={refreshAll} />
           </div>
         )}
 
@@ -144,7 +185,7 @@ export function Dashboard() {
       {/* Initial onboarding wizard */}
       <OnboardingModal 
         open={showOnboarding} 
-        onComplete={() => setShowOnboarding(false)} 
+        onComplete={handleOnboardingComplete} 
       />
     </div>
   );

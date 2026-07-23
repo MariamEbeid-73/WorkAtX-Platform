@@ -96,7 +96,7 @@ export function LinkedInIdentityCard({ connection, isLoading }: LinkedInIdentity
             icon={<LinkedinOutlined />}
             onClick={async () => {
               const token = await getToken();
-              if (token) await initiateOAuth('linkedin', token);
+              if (token) await initiateOAuth('linkedin', token, true);
             }}
             style={{
               background: 'rgba(255,255,255,0.06)',
@@ -117,7 +117,7 @@ export function LinkedInIdentityCard({ connection, isLoading }: LinkedInIdentity
             style={{ color: 'var(--text-secondary)', borderRadius: 10 }}
             onClick={async () => {
               const token = await getToken();
-              if (token) await initiateOAuth('linkedin', token);
+              if (token) await initiateOAuth('linkedin', token, true);
             }}
           >
             Reconnect

@@ -30,9 +30,8 @@ services:
       - "9001:9001" # Web UI — visit http://localhost:9001 to browse buckets
     volumes:
       - workx-minio-data:/data
-      - ./certs:/root/.minio/certs
     healthcheck:
-      test: [ "CMD-SHELL", "curl -kI https://localhost:9000/minio/health/live || exit 1" ]
+      test: [ "CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -50,7 +49,7 @@ services:
       Clerk__Authority: "${CLERK_AUTHORITY:-https://factual-reptile-75.clerk.accounts.dev}"
       ConnectionStrings__DefaultConnection: >
         Host=db;Port=5432;Database=${DB_NAME:-WorkXDb}; Username=${DB_USER:-postgres};Password=${DB_PASSWORD:-WorkX@Password2026};
-      S3__Endpoint: "https://minio:9000"
+      S3__Endpoint: "http://minio:9000"
       S3__BucketName: "${S3_BUCKET_NAME:-workx-resumes}"
       S3__AccessKey: "${AWS_ACCESS_KEY_ID:-minioadmin}"
       S3__SecretKey: "${AWS_SECRET_ACCESS_KEY:-minioadmin}"
@@ -61,7 +60,7 @@ services:
       OAuth__LinkedIn__ClientId: "${LINKEDIN_CLIENT_ID:-784cl32dcq4gfj}"
       OAuth__LinkedIn__ClientSecret: "${LINKEDIN_CLIENT_SECRET:-WPL_AP1.iBx2BuHYYljtPDIR.+zRkJQ==}"
       OAuth__LinkedIn__RedirectUri: "http://localhost:5000/oauth/linkedin/callback"
-      OAuth__FrontendCallbackUrl: "${FRONTEND_URL:-http://localhost:4200}/connected-accounts"
+      OAuth__FrontendCallbackUrl: "${FRONTEND_URL:-http://localhost:4200}/oauth-return"
       Encryption__Key: "${ENCRYPTION_KEY:-2JGGQQujI4auE8XfUHisIVNJ3AGayFN4ygljCRFmgms=}"
     ports:
       - "5000:5000"
@@ -84,7 +83,7 @@ services:
       minio:
         condition: service_healthy
     entrypoint: >
-      /bin/sh -c " /usr/bin/mc --insecure alias set myminio https://minio:9000 \$MINIO_ROOT_USER \$MINIO_ROOT_PASSWORD; /usr/bin/mc --insecure mb myminio/\$S3_BUCKET_NAME --ignore-existing; /usr/bin/mc --insecure anonymous set download myminio/\$S3_BUCKET_NAME; echo 'Bucket created and configured successfully.'; exit 0; "
+      /bin/sh -c " /usr/bin/mc alias set myminio http://minio:9000 \$MINIO_ROOT_USER \$MINIO_ROOT_PASSWORD; /usr/bin/mc mb myminio/\$S3_BUCKET_NAME --ignore-existing; printf '{\"CORSRules\":[{\"AllowedOrigins\":[\"*\"],\"AllowedMethods\":[\"GET\",\"PUT\",\"DELETE\",\"HEAD\"],\"AllowedHeaders\":[\"*\"],\"ExposeHeaders\":[\"ETag\",\"x-amz-request-id\"],\"MaxAgeSeconds\":3600}]}' > /tmp/cors.json; /usr/bin/mc cors set myminio/\$S3_BUCKET_NAME /tmp/cors.json; /usr/bin/mc anonymous set download myminio/\$S3_BUCKET_NAME; echo 'Bucket created and CORS configured.'; exit 0; "
 
   fe:
     build:

@@ -24,11 +24,13 @@ public class S3FileStorageService : IFileStorageService, IDisposable
         var config = new AmazonS3Config
         {
             RegionEndpoint = RegionEndpoint.GetBySystemName(region),
+            UseHttp = true,
         };
 
         var presignedConfig = new AmazonS3Config
         {
             RegionEndpoint = RegionEndpoint.GetBySystemName(region),
+            UseHttp = true,
         };
 
         // If a custom endpoint is configured (MinIO), override the service URL.

@@ -44,8 +44,8 @@ public class OAuthController : ControllerBase
 
         await _oauthService.ExchangeCodeAsync(provider, code, state);
 
-        var frontendUrl = _config["OAuth:FrontendCallbackUrl"] ?? "http://localhost:5173/connected-accounts";
-        return Redirect(frontendUrl);
+        var frontendUrl = _config["OAuth:FrontendCallbackUrl"] ?? "http://localhost:4200/oauth-return";
+        return Redirect($"{frontendUrl}?provider={provider}");
     }
 
     /// <summary>Returns a list of all providers the current user has connected.</summary>

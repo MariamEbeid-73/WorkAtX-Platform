@@ -10,6 +10,7 @@ import { KnowledgeGraphPage } from '../pages/KnowledgeGraphPage';
 import { GeniPage } from '../pages/GeniPage';
 
 // Pages from incoming branch
+import { OAuthReturnPage } from '../pages/OAuthReturnPage';
 import { ConnectedAccountsPage } from '../pages/ConnectedAccountsPage';
 import { ResumesPage } from '../pages/ResumesPage';
 
@@ -35,6 +36,9 @@ export function AppRouter() {
             {/* SSO callback routes — must be BEFORE sign-in/* and sign-up/* wildcards */}
             <Route path="/sign-in/sso-callback" element={<SSOCallbackPage />} />
             <Route path="/sign-up/sso-callback" element={<SSOCallbackPage />} />
+
+            {/* OAuth return route — popup callback after GitHub/LinkedIn OAuth */}
+            <Route path="/oauth-return" element={<OAuthReturnPage />} />
 
             <Route path="/sign-in/*" element={<SignInPage />} />
             <Route path="/sign-up/*" element={<SignUpPage />} />

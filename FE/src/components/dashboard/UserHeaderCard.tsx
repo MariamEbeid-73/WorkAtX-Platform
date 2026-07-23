@@ -9,7 +9,6 @@ import {
   EditOutlined,
   SafetyCertificateOutlined,
   FileTextOutlined,
-  ReloadOutlined,
   CheckCircleFilled,
   MessageOutlined,
   LinkOutlined,
@@ -18,7 +17,6 @@ import type { UserProfile } from '../../types/profile';
 import { useToggleOpenToWork } from '../../hooks/useProfile';
 import { CompleteProfileModal } from './CompleteProfileModal';
 import { ResumeViewerModal } from './ResumeViewerModal';
-import { OnboardingModal } from '../OnboardingModal';
 import { listResumes, getDownloadUrl } from '../../services/resumeService';
 
 const { Text, Title } = Typography;
@@ -26,9 +24,10 @@ const { Text, Title } = Typography;
 interface UserHeaderCardProps {
   profile: UserProfile | null;
   isLoading: boolean;
+  onProfileUpdate?: () => void;
 }
 
-export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
+export function UserHeaderCard({ profile, isLoading, onProfileUpdate }: UserHeaderCardProps) {
   const { user } = useUser();
   const { getToken } = useAuth();
   const navigate = useNavigate();
@@ -37,7 +36,6 @@ export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
   // Modal states
   const [showCompleteProfile, setShowCompleteProfile] = useState(false);
   const [showResumeViewer, setShowResumeViewer] = useState(false);
-  const [showReanalyze, setShowReanalyze] = useState(false);
 
   // Resume URL fetched on demand
   const [resumeUrl, setResumeUrl] = useState<string | undefined>(undefined);
@@ -215,7 +213,7 @@ export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
 
         {/* ── Right: Actions ────────────────────────────────────────────── */}
         <Flex vertical gap={14} align="flex-end">
-          {/* Complete Profile CTA */}
+          {/* Edit Profile CTA */}
           <Button
             type="primary"
             onClick={() => setShowCompleteProfile(true)}
@@ -226,7 +224,7 @@ export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
               boxShadow: '0 0 16px rgba(139,92,246,0.35)',
             }}
           >
-            Complete Profile
+            Edit Profile
           </Button>
 
           {/* Open to Work toggle */}
@@ -265,21 +263,6 @@ export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
                 View Resume
               </Button>
             </Tooltip>
-            <Tooltip title="Re-analyze your CV and GitHub">
-              <Button
-                size="small"
-                icon={<ReloadOutlined />}
-                onClick={() => setShowReanalyze(true)}
-                style={{
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.10)',
-                  color: 'var(--text-secondary)',
-                  borderRadius: 10,
-                }}
-              >
-                Re-analyze Profile
-              </Button>
-            </Tooltip>
             <Tooltip title="Talk with Geni AI Assistant">
               <Button
                 size="small"
@@ -302,18 +285,12 @@ export function UserHeaderCard({ profile, isLoading }: UserHeaderCardProps) {
       {/* Modals */}
       <CompleteProfileModal
         open={showCompleteProfile}
-        onClose={() => setShowCompleteProfile(false)}
+        onClose={() => { setShowCompleteProfile(false); onProfileUpdate?.(); }}
       />
       <ResumeViewerModal
         open={showResumeViewer}
         onClose={() => setShowResumeViewer(false)}
         resumeUrl={resumeUrl}
-      />
-      <OnboardingModal
-        open={showReanalyze}
-        closable={true}
-        onClose={() => setShowReanalyze(false)}
-        onComplete={() => setShowReanalyze(false)}
       />
     </Card>
   );

@@ -123,6 +123,32 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
     return () => { cancelled = true; };
   }, [open, getToken]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    const handleMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type !== 'oauth-connected') return;
+
+      (async () => {
+        const token = await getToken();
+        if (!token) return;
+        try {
+          setConnectionsLoading(true);
+          const conns = await getConnections(token);
+          setConnections(conns);
+        } catch {
+          // silently degrade
+        } finally {
+          setConnectionsLoading(false);
+        }
+      })();
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [open, getToken]);
+
   const githubConn   = connections.find(c => c.provider === 'github')   ?? null;
   const linkedinConn = connections.find(c => c.provider === 'linkedin')  ?? null;
 
@@ -348,7 +374,7 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
                 icon={<GithubOutlined />}
                 onClick={async () => {
                   const token = await getToken();
-                  if (token) await initiateOAuth('github', token);
+                  if (token) await initiateOAuth('github', token, true);
                 }}
                 style={{
                   background: 'rgba(255,255,255,0.06)',
@@ -416,7 +442,7 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
                 icon={<LinkedinOutlined />}
                 onClick={async () => {
                   const token = await getToken();
-                  if (token) await initiateOAuth('linkedin', token);
+                  if (token) await initiateOAuth('linkedin', token, true);
                 }}
                 style={{
                   background: 'rgba(0,119,181,0.08)',

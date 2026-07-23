@@ -144,10 +144,22 @@ namespace BE.Migrations
                     .HasMaxLength(256)
                     .HasColumnType("character varying(256)");
 
+                b.Property<string>("ContactEmail")
+                    .HasMaxLength(320)
+                    .HasColumnType("character varying(320)");
+
+                b.Property<string>("ContactPhone")
+                    .HasMaxLength(30)
+                    .HasColumnType("character varying(30)");
+
                 b.Property<DateTimeOffset>("CreatedAt")
                     .ValueGeneratedOnAdd()
                     .HasColumnType("timestamp with time zone")
                     .HasDefaultValueSql("NOW()");
+
+                b.Property<string>("Degree")
+                    .HasMaxLength(200)
+                    .HasColumnType("character varying(200)");
 
                 b.Property<string>("Email")
                     .IsRequired()
@@ -158,12 +170,19 @@ namespace BE.Migrations
                     .HasMaxLength(256)
                     .HasColumnType("character varying(256)");
 
+                b.Property<int?>("GraduationYear")
+                    .HasColumnType("integer");
+
                 b.Property<string>("Handle")
                     .HasMaxLength(100)
                     .HasColumnType("character varying(100)");
 
                 b.Property<bool>("IsOpenToWork")
                     .HasColumnType("boolean");
+
+                b.Property<string>("JobTypesJson")
+                    .HasMaxLength(1000)
+                    .HasColumnType("character varying(1000)");
 
                 b.Property<string>("LinkedinUrl")
                     .HasMaxLength(256)
@@ -173,12 +192,19 @@ namespace BE.Migrations
                     .HasMaxLength(100)
                     .HasColumnType("character varying(100)");
 
+                b.Property<int?>("MinStipend")
+                    .HasColumnType("integer");
+
                 b.Property<int>("ProfileCompletionPct")
                     .HasColumnType("integer");
 
                 b.Property<string>("TechStackJson")
                     .HasMaxLength(2000)
                     .HasColumnType("character varying(2000)");
+
+                b.Property<string>("WorkPrefsJson")
+                    .HasMaxLength(1000)
+                    .HasColumnType("character varying(1000)");
 
                 b.Property<int?>("YearsOfExperience")
                     .HasColumnType("integer");

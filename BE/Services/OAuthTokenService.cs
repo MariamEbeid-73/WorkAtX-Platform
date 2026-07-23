@@ -135,6 +135,11 @@ public class OAuthTokenService : IOAuthTokenService
             existing.UpdatedAt             = now;
         }
 
+        if (provider.ToLower() == "github")
+            user.GithubUrl = $"https://github.com/{username}";
+        else if (provider.ToLower() == "linkedin")
+            user.LinkedinUrl = username;
+
         await _db.SaveChangesAsync();
     }
 

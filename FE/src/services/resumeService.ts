@@ -61,6 +61,7 @@ export function uploadToMinIO(
         if (finalUrl.includes('//minio:9000')) {
             finalUrl = finalUrl.replace('//minio:9000', '//localhost:9000');
         }
+        finalUrl = finalUrl.replace('https://localhost:9000', 'http://localhost:9000');
         xhr.open('PUT', finalUrl);
         xhr.setRequestHeader('Content-Type', file.type);
         xhr.send(file);
@@ -81,6 +82,7 @@ export const getDownloadUrl = async (token: string, resumeId: string): Promise<D
     if (res.downloadUrl.includes('//minio:9000')) {
         res.downloadUrl = res.downloadUrl.replace('//minio:9000', '//localhost:9000');
     }
+    res.downloadUrl = res.downloadUrl.replace('https://localhost:9000', 'http://localhost:9000');
     return res;
 };
 

@@ -119,7 +119,7 @@ export function DeveloperIdentityCard({
             icon={<GithubOutlined />}
             onClick={async () => {
               const token = await getToken();
-              if (token) await initiateOAuth('github', token);
+              if (token) await initiateOAuth('github', token, true);
             }}
             style={{
               background: 'rgba(255,255,255,0.06)',

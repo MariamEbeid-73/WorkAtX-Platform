@@ -22,7 +22,7 @@ export interface CollegeVerification {
 export interface UserProfile {
   id: string;
   clerkUserId: string;
-  handle: string;              // e.g. "@alex.dev"
+  handle: string;
   displayName: string;
   email: string;
   avatarUrl?: string;
@@ -32,8 +32,15 @@ export interface UserProfile {
   techStack: string[];
   socialLinks: SocialLinks;
   collegeVerification: CollegeVerification;
+  degree?: string;
+  graduationYear?: number;
+  minStipend?: number;
+  jobTypes: string[];
+  workPrefs: string[];
+  contactEmail?: string;
+  contactPhone?: string;
   isOpenToWork: boolean;
-  profileCompletionPct: number;  // 0-100
+  profileCompletionPct: number;
   createdAt: string;
   updatedAt: string;
   plan: string | null;
@@ -81,6 +88,13 @@ export interface UpdateProfilePayload {
   yearsOfExperience?: number;
   techStack?: string[];
   socialLinks?: Partial<SocialLinks>;
+  degree?: string;
+  graduationYear?: number;
+  minStipend?: number;
+  jobTypes?: string[];
+  workPrefs?: string[];
+  contactEmail?: string;
+  contactPhone?: string;
 }
 
 export interface ToggleOpenToWorkPayload {

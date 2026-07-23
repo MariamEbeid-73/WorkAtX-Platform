@@ -3,6 +3,12 @@ public record UpdateProfileRequest(
     string? Bio,
     string? Location,
     int?    YearsOfExperience,
-    IEnumerable<string>? TechStack
-    // GithubUrl and LinkedinUrl removed — set only by OAuth
+    IEnumerable<string>? TechStack,
+    string? Degree,
+    int?    GraduationYear,
+    int?    MinStipend,
+    IEnumerable<string>? JobTypes,
+    IEnumerable<string>? WorkPrefs,
+    string? ContactEmail,
+    string? ContactPhone
 );

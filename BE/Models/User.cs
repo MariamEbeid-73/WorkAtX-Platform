@@ -36,6 +36,26 @@ public class User
     [MaxLength(256)]
     public string? LinkedinUrl { get; set; }
 
+    [MaxLength(200)]
+    public string? Degree { get; set; }
+
+    public int? GraduationYear { get; set; }
+
+    public int? MinStipend { get; set; }
+
+    [MaxLength(1000)]
+    public string? JobTypesJson { get; set; }
+
+    [MaxLength(1000)]
+    public string? WorkPrefsJson { get; set; }
+
+    [MaxLength(320)]
+    [EmailAddress]
+    public string? ContactEmail { get; set; }
+
+    [MaxLength(30)]
+    public string? ContactPhone { get; set; }
+
     public bool IsOpenToWork { get; set; } = false;
 
     public int ProfileCompletionPct { get; set; } = 0;

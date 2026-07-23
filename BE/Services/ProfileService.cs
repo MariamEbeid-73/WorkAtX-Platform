@@ -52,11 +52,18 @@ public class ProfileService : IProfileService
         // Only update fields the caller provided (non-null values)
         // This is the partial update pattern — we don't overwrite fields
         // the caller didn't mention
-        if (request.Handle    is not null) user.Handle             = request.Handle;
-        if (request.Bio       is not null) user.Bio                = request.Bio;
-        if (request.Location  is not null) user.Location           = request.Location;
-        if (request.YearsOfExperience.HasValue) user.YearsOfExperience = request.YearsOfExperience;
-        if (request.TechStack is not null) user.TechStackJson      = JsonSerializer.Serialize(request.TechStack);
+        if (request.Handle            is not null) user.Handle             = request.Handle;
+        if (request.Bio               is not null) user.Bio                = request.Bio;
+        if (request.Location          is not null) user.Location           = request.Location;
+        if (request.YearsOfExperience.HasValue) user.YearsOfExperience     = request.YearsOfExperience;
+        if (request.TechStack         is not null) user.TechStackJson      = JsonSerializer.Serialize(request.TechStack);
+        if (request.Degree            is not null) user.Degree             = request.Degree;
+        if (request.GraduationYear.HasValue)    user.GraduationYear        = request.GraduationYear;
+        if (request.MinStipend.HasValue)       user.MinStipend            = request.MinStipend;
+        if (request.JobTypes          is not null) user.JobTypesJson       = JsonSerializer.Serialize(request.JobTypes);
+        if (request.WorkPrefs         is not null) user.WorkPrefsJson      = JsonSerializer.Serialize(request.WorkPrefs);
+        if (request.ContactEmail      is not null) user.ContactEmail       = request.ContactEmail;
+        if (request.ContactPhone      is not null) user.ContactPhone       = request.ContactPhone;
 
         user.ProfileCompletionPct = CalculateCompletionPct(user);
 
@@ -85,17 +92,21 @@ public class ProfileService : IProfileService
     /// </summary>
     private static int CalculateCompletionPct(BE.Models.User user)
     {
-        // 5 checkpoints, each worth 20 points = 100 max
         var points = 0;
 
-        if (!string.IsNullOrWhiteSpace(user.Handle))   points += 20;
-        if (!string.IsNullOrWhiteSpace(user.Bio))       points += 20;
-        if (!string.IsNullOrWhiteSpace(user.GithubUrl)) points += 20;
+        if (!string.IsNullOrWhiteSpace(user.Handle))          points += 10;
+        if (!string.IsNullOrWhiteSpace(user.Bio))              points += 10;
+        if (!string.IsNullOrWhiteSpace(user.GithubUrl))        points += 10;
         if (!string.IsNullOrWhiteSpace(user.TechStackJson) &&
-            user.TechStackJson != "[]")                 points += 20;
-        if (user.YearsOfExperience.HasValue)            points += 20;
+            user.TechStackJson != "[]")                         points += 10;
+        if (user.YearsOfExperience.HasValue)                    points += 10;
+        if (!string.IsNullOrWhiteSpace(user.Degree))            points += 10;
+        if (user.GraduationYear.HasValue)                       points += 10;
+        if (user.MinStipend.HasValue)                           points += 10;
+        if (!string.IsNullOrWhiteSpace(user.ContactEmail))      points += 10;
+        if (!string.IsNullOrWhiteSpace(user.ContactPhone))      points += 10;
 
-        return points;
+        return Math.Min(points, 100);
     }
 
     /// <summary>
@@ -109,23 +120,38 @@ public class ProfileService : IProfileService
             ? Array.Empty<string>()
             : JsonSerializer.Deserialize<string[]>(user.TechStackJson) ?? Array.Empty<string>();
 
+        var jobTypes = string.IsNullOrWhiteSpace(user.JobTypesJson)
+            ? Array.Empty<string>()
+            : JsonSerializer.Deserialize<string[]>(user.JobTypesJson) ?? Array.Empty<string>();
+
+        var workPrefs = string.IsNullOrWhiteSpace(user.WorkPrefsJson)
+            ? Array.Empty<string>()
+            : JsonSerializer.Deserialize<string[]>(user.WorkPrefsJson) ?? Array.Empty<string>();
+
         return new UserProfileResponse(
             Id:                   user.Id,
             ClerkUserId:          user.ClerkUserId,
             Handle:               user.Handle ?? $"@{user.Email.Split('@')[0].ToLower()}.dev",
-            DisplayName:          user.Email.Split('@')[0],  // placeholder until Clerk name is synced
+            DisplayName:          user.Email.Split('@')[0],
             Email:                user.Email,
-            AvatarUrl:            null,           // comes from Clerk — not stored in our DB
+            AvatarUrl:            null,
             Bio:                  user.Bio,
             Location:             user.Location,
             YearsOfExperience:    user.YearsOfExperience,
             TechStack:            techStack,
             SocialLinks:          new SocialLinksDto(user.GithubUrl, user.LinkedinUrl, null, null),
-            CollegeVerification:  new CollegeVerificationDto(false, null, null), // future checkpoint
+            CollegeVerification:  new CollegeVerificationDto(false, null, null),
+            Degree:               user.Degree,
+            GraduationYear:       user.GraduationYear,
+            MinStipend:           user.MinStipend,
+            JobTypes:             jobTypes,
+            WorkPrefs:            workPrefs,
+            ContactEmail:         user.ContactEmail,
+            ContactPhone:         user.ContactPhone,
             IsOpenToWork:         user.IsOpenToWork,
             ProfileCompletionPct: user.ProfileCompletionPct,
             CreatedAt:            user.CreatedAt,
-            UpdatedAt:            user.CreatedAt  // no UpdatedAt column on User yet — same as CreatedAt for now
+            UpdatedAt:            user.CreatedAt
         );
     }
 }
