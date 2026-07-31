@@ -11,6 +11,8 @@ public class AppDbContext : DbContext
     public DbSet<MessageUsage> MessageUsages => Set<MessageUsage>();
     public DbSet<OAuthToken> OAuthTokens => Set<OAuthToken>();
     public DbSet<ResumeFile> ResumeFiles => Set<ResumeFile>();
+    public DbSet<Job> Jobs => Set<Job>();
+    public DbSet<UserAnalysis> UserAnalyses => Set<UserAnalysis>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -43,6 +45,27 @@ public class AppDbContext : DbContext
             entity.HasOne(r => r.User).WithMany(u => u.ResumeFiles)
                 .HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
             entity.Property(r => r.CreatedAt).HasDefaultValueSql("NOW()");
+        });
+
+        modelBuilder.Entity<Job>(entity =>
+        {
+            entity.ToTable("Jobs");
+            entity.HasIndex(j => j.UserId).HasDatabaseName("IX_Jobs_UserId");
+            entity.HasIndex(j => j.Status).HasDatabaseName("IX_Jobs_Status");
+            entity.HasOne(j => j.User).WithMany()
+                .HasForeignKey(j => j.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.Property(j => j.CreatedAt).HasDefaultValueSql("NOW()");
+            entity.Property(j => j.UpdatedAt).HasDefaultValueSql("NOW()");
+        });
+
+        modelBuilder.Entity<UserAnalysis>(entity =>
+        {
+            entity.ToTable("UserAnalyses");
+            entity.HasOne(a => a.User).WithOne()
+                .HasForeignKey<UserAnalysis>(a => a.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.Property(a => a.ResultJson).HasColumnType("jsonb");
+            entity.Property(a => a.CreatedAt).HasDefaultValueSql("NOW()");
+            entity.Property(a => a.UpdatedAt).HasDefaultValueSql("NOW()");
         });
     }
 }
