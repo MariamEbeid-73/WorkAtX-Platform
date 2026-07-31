@@ -82,6 +82,23 @@ public class ProfileService : IProfileService
         return user.IsOpenToWork;
     }
 
+    public async Task<object?> GetScoreBreakdownAsync()
+    {
+        var clerkUserId = _currentUserService.GetClerkUserId();
+        var email       = _currentUserService.GetEmail();
+        var user        = await _userService.GetOrCreateUserAsync(clerkUserId, email);
+
+        // null until the AI worker writes the score row — the dashboard renders
+        // fallback values for null, so we don't 404 here.
+        var score = await _db.ProfileScores
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.UserId == user.Id);
+
+        if (score is null || string.IsNullOrWhiteSpace(score.BreakdownJson)) return null;
+
+        return JsonSerializer.Deserialize<object>(score.BreakdownJson);
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /// <summary>

@@ -5,6 +5,7 @@ using BE.Common.Encryption;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using StackExchange.Redis;
 
 namespace BE.Extensions;
 
@@ -70,7 +71,7 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    public static IServiceCollection AddApplicationServices(this IServiceCollection services)
+    public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IHealthCheckService, HealthCheckService>();
@@ -82,6 +83,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOAuthTokenService, OAuthTokenService>();
         services.AddScoped<IResumeService, ResumeService>();
         services.AddScoped<IProfileService, ProfileService>();
+        services.AddScoped<IJobService, JobService>();
+        services.AddScoped<IJobQueueService, JobQueueService>();
+
+        // Redis connection is shared across the process — a singleton.
+        var redisConfig = configuration["Redis:Configuration"] ?? "redis:6379,abortConnect=false";
+        services.AddSingleton<IConnectionMultiplexer>(
+            ConnectionMultiplexer.Connect(redisConfig));
 
         return services;
     }

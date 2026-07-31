@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@clerk/react';
 import {
   Modal, Steps, Button, Upload, Flex, Typography, Tag, Progress, message,
@@ -75,6 +76,7 @@ function ProcessingScreen() {
 // ── Main Onboarding Modal ────────────────────────────────────────────────────
 export function OnboardingModal({ open, onComplete, onClose, closable = false }: OnboardingModalProps) {
   const { getToken } = useAuth();
+  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<OnboardingStep>(0);
   const [processing, setProcessing]   = useState(false);
   const [resumeFile, setResumeFile]   = useState<UploadFile | null>(null);
@@ -181,6 +183,8 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
     }
     setProcessing(false);
     onComplete();
+    // Navigate to Knowledge Graph and auto-trigger analysis
+    navigate('/knowledge-graph?analyze=true');
   };
 
   // ── Step 0: Resume ────────────────────────────────────────────────────────
