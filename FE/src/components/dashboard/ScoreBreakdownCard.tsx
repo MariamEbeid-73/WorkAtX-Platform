@@ -1,223 +1,204 @@
-import { useState } from 'react';
-import { Card, Segmented, Progress, Flex, Typography, Skeleton, Tooltip, Tag } from 'antd';
-import { RiseOutlined, FallOutlined, TrophyOutlined } from '@ant-design/icons';
-import type { ScoreBreakdown, ScoreTab, TabScores } from '../../types/profile';
+import { useNavigate } from 'react-router-dom';
+import { Flex, Typography, Skeleton, Tag } from 'antd';
+import { TrophyOutlined, ArrowRightOutlined, RiseOutlined, FallOutlined } from '@ant-design/icons';
+import type { ScoreBreakdown } from '../../types/profile';
 
 const { Text, Title } = Typography;
 
-// ─── Gauge config ────────────────────────────────────────────────────────────
-const GAUGE_CONFIG = [
-  {
-    key: 'overallShowoff' as const,
-    label: 'Overall Showoff',
-    strokeColor: { '0%': '#8B5CF6', '100%': '#06B6D4' },
-    trailColor: 'rgba(139,92,246,0.10)',
-    icon: '🏆',
-  },
-  {
-    key: 'resume' as const,
-    label: 'Resume Score',
-    strokeColor: { '0%': '#F59E0B', '100%': '#EF4444' },
-    trailColor: 'rgba(245,158,11,0.10)',
-    icon: '📄',
-  },
-  {
-    key: 'github' as const,
-    label: 'GitHub Score',
-    strokeColor: { '0%': '#10B981', '100%': '#06B6D4' },
-    trailColor: 'rgba(16,185,129,0.10)',
-    icon: '⚡',
-  },
-];
-
-// ─── ScoreGauge ──────────────────────────────────────────────────────────────
-interface ScoreGaugeProps {
-  label: string;
-  value: number;
-  trend?: number;
-  strokeColor: Record<string, string>;
-  trailColor: string;
-  icon: string;
-}
-
-function ScoreGauge({ label, value, trend, strokeColor, trailColor, icon }: ScoreGaugeProps) {
-  const trendUp   = typeof trend === 'number' && trend > 0;
-  const trendDown = typeof trend === 'number' && trend < 0;
-
-  return (
-    <Tooltip title={`${label}: ${value}/100`} placement="bottom">
-      <Flex
-        vertical
-        align="center"
-        gap={14}
-        style={{
-          flex: 1,
-          minWidth: 160,
-          padding: '20px 16px',
-          borderRadius: 16,
-          background: 'rgba(255,255,255,0.02)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          cursor: 'default',
-          transition: 'all 0.25s ease',
-        }}
-        className="score-gauge-card"
-      >
-        {/* Circular progress */}
-        <Progress
-          type="circle"
-          percent={value}
-          size={110}
-          strokeColor={strokeColor}
-          trailColor={trailColor}
-          strokeWidth={8}
-          format={(pct) => (
-            <Flex vertical align="center" gap={2}>
-              <span style={{ fontSize: 11 }}>{icon}</span>
-              <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1 }}>
-                {pct}
-              </span>
-              <span style={{ fontSize: 9, color: 'var(--text-tertiary)', letterSpacing: '0.05em' }}>
-                / 100
-              </span>
-            </Flex>
-          )}
-        />
-
-        {/* Label + trend */}
-        <Flex vertical align="center" gap={4}>
-          <Text style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', textAlign: 'center' }}>
-            {label}
-          </Text>
-          {typeof trend === 'number' && trend !== 0 && (
-            <Tag
-              icon={trendUp ? <RiseOutlined /> : trendDown ? <FallOutlined /> : undefined}
-              style={{
-                background: trendUp ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
-                border: `1px solid ${trendUp ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`,
-                color: trendUp ? '#10B981' : '#EF4444',
-                borderRadius: 8,
-                fontSize: 11,
-                margin: 0,
-              }}
-            >
-              {trendUp ? '+' : ''}{trend}
-            </Tag>
-          )}
-        </Flex>
-      </Flex>
-    </Tooltip>
-  );
-}
-
-// ─── ScoreBreakdownCard ──────────────────────────────────────────────────────
 interface ScoreBreakdownCardProps {
   scores: ScoreBreakdown | null;
   isLoading: boolean;
 }
 
-const TAB_OPTIONS = [
-  { label: 'Overall', value: 'overall' as ScoreTab },
-  { label: 'Dev Score', value: 'dev' as ScoreTab },
-  { label: 'AI/ML Score', value: 'aiml' as ScoreTab },
+/** Mini circular SVG gauge */
+function MiniGauge({ value, color, trail }: { value: number; color: string; trail: string }) {
+  const size = 80;
+  const r    = (size - 8) / 2;
+  const circ = 2 * Math.PI * r;
+  const dash = (value / 100) * circ;
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={trail} strokeWidth={6} />
+        <circle
+          cx={size / 2} cy={size / 2} r={r} fill="none"
+          stroke={color} strokeWidth={6}
+          strokeDasharray={`${dash} ${circ}`}
+          strokeLinecap="round"
+          style={{ filter: `drop-shadow(0 0 6px ${color}90)` }}
+        />
+      </svg>
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Text style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1 }}>
+          {value}
+        </Text>
+      </div>
+    </div>
+  );
+}
+
+const DOMAIN_CONFIG = [
+  { key: 'overall' as const, label: 'Overall',   color: '#8B5CF6', trail: 'rgba(139,92,246,0.12)', emoji: '⚡' },
+  { key: 'dev'     as const, label: 'Developer', color: '#06B6D4', trail: 'rgba(6,182,212,0.12)',  emoji: '💻' },
+  { key: 'aiml'   as const, label: 'AI / ML',   color: '#F59E0B', trail: 'rgba(245,158,11,0.12)', emoji: '🧠' },
 ];
 
 export function ScoreBreakdownCard({ scores, isLoading }: ScoreBreakdownCardProps) {
-  const [activeTab, setActiveTab] = useState<ScoreTab>('overall');
+  const navigate = useNavigate();
 
-  // Fallback data for when the API isn't connected yet
-  const fallbackTabScores: TabScores = {
-    overallShowoff: { label: 'Overall Showoff', value: 78, trend: 5 },
-    resume:         { label: 'Resume Score',   value: 85, trend: 3 },
-    github:         { label: 'GitHub Score',   value: 62, trend: -2 },
-  };
-
-  const tabScores: TabScores = scores?.[activeTab] ?? fallbackTabScores;
+  // Fallback values when backend isn't connected
+  const fallback = { overall: 78, dev: 82, aiml: 55 };
+  const trends   = { overall: 5,  dev: 6,  aiml: 0  };
 
   return (
-    <Card
-      bordered
+    <div
       style={{
+        borderRadius: 20, overflow: 'hidden',
         background: 'rgba(14,18,32,0.80)',
         border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: 20,
-        overflow: 'hidden',
+        backdropFilter: 'blur(12px)',
       }}
     >
-      {/* Header */}
-      <Flex align="flex-start" justify="space-between" gap={16} wrap="wrap" style={{ marginBottom: 24 }}>
-        <Flex vertical gap={4}>
-          <Tag
-            style={{
-              background: 'rgba(139,92,246,0.12)',
-              border: '1px solid rgba(139,92,246,0.25)',
-              color: 'var(--color-primary-400)',
-              borderRadius: 8,
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: '0.10em',
-              width: 'fit-content',
-              marginBottom: 6,
-            }}
-          >
-            <TrophyOutlined style={{ marginRight: 4 }} />
-            PERFORMANCE HUB
-          </Tag>
-          <Title level={4} style={{ margin: 0, color: 'var(--text-primary)' }}>
-            Score Breakdown
-          </Title>
-          <Text style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-            AI-analyzed performance across dimensions
-          </Text>
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <Flex
+        align="center"
+        justify="space-between"
+        gap={12}
+        style={{
+          padding: '20px 24px 16px',
+          borderBottom: '1px solid rgba(255,255,255,0.05)',
+        }}
+      >
+        <Flex align="center" gap={10}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 9,
+            background: 'rgba(139,92,246,0.12)',
+            border: '1px solid rgba(139,92,246,0.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <TrophyOutlined style={{ fontSize: 15, color: '#A78BFA' }} />
+          </div>
+          <Flex vertical gap={1}>
+            <Title level={5} style={{ margin: 0, color: 'var(--text-primary)', fontSize: 14 }}>
+              Performance Overview
+            </Title>
+            <Text style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+              AI-analyzed scores across dimensions
+            </Text>
+          </Flex>
         </Flex>
 
-        {/* Segmented tab switcher */}
-        <Segmented
-          options={TAB_OPTIONS.map((t) => ({ label: t.label, value: t.value }))}
-          value={activeTab}
-          onChange={(val) => setActiveTab(val as ScoreTab)}
-          style={{ background: 'rgba(255,255,255,0.05)' }}
-        />
+        {/* "View full breakdown" link */}
+        <button
+          onClick={() => navigate('/knowledge-graph')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '7px 14px', borderRadius: 10, cursor: 'pointer',
+            background: 'rgba(139,92,246,0.08)',
+            border: '1px solid rgba(139,92,246,0.22)',
+            color: '#A78BFA', fontSize: 12, fontWeight: 600,
+            transition: 'all 0.2s ease', whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLButtonElement).style.background = 'rgba(139,92,246,0.16)';
+            (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(139,92,246,0.40)';
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLButtonElement).style.background = 'rgba(139,92,246,0.08)';
+            (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(139,92,246,0.22)';
+          }}
+        >
+          Full breakdown <ArrowRightOutlined style={{ fontSize: 11 }} />
+        </button>
       </Flex>
 
-      {/* Gauges */}
-      {isLoading ? (
-        <Flex gap={16} wrap="wrap">
-          {[0, 1, 2].map((i) => (
-            <Flex
-              key={i}
-              vertical
-              align="center"
-              gap={12}
-              style={{ flex: 1, minWidth: 160, padding: 20 }}
-            >
-              <Skeleton.Avatar active size={110} shape="circle" />
-              <Skeleton.Input active size="small" style={{ width: 100 }} />
-            </Flex>
-          ))}
-        </Flex>
-      ) : (
-        <Flex gap={16} wrap="wrap" justify="center">
-          {GAUGE_CONFIG.map((cfg) => {
-            const metric = tabScores[cfg.key];
-            return (
-              <ScoreGauge
-                key={cfg.key}
-                label={cfg.label}
-                value={metric?.value ?? 0}
-                trend={metric?.trend}
-                strokeColor={cfg.strokeColor}
-                trailColor={cfg.trailColor}
-                icon={cfg.icon}
-              />
-            );
-          })}
-        </Flex>
-      )}
+      {/* ── Score teasers ────────────────────────────────────────────────── */}
+      <div style={{ padding: '20px 24px 24px' }}>
+        {isLoading ? (
+          <Flex gap={16} wrap="wrap">
+            {[0, 1, 2].map(i => (
+              <Flex key={i} align="center" gap={12} style={{ flex: '1 1 140px' }}>
+                <Skeleton.Avatar active size={80} shape="circle" />
+                <Flex vertical gap={6}>
+                  <Skeleton.Input active size="small" style={{ width: 80 }} />
+                  <Skeleton.Input active size="small" style={{ width: 60 }} />
+                </Flex>
+              </Flex>
+            ))}
+          </Flex>
+        ) : (
+          <Flex gap={16} wrap="wrap">
+            {DOMAIN_CONFIG.map(({ key, label, color, trail, emoji }) => {
+              const val   = scores?.[key]?.overallShowoff?.value ?? fallback[key];
+              const trend = scores?.[key]?.overallShowoff?.trend ?? trends[key];
+              const trendUp   = trend > 0;
+              const trendDown = trend < 0;
 
-      {/* Footer note */}
-      <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', display: 'block', marginTop: 20, textAlign: 'center' }}>
-        Scores are updated after each profile re-analysis · Last analyzed just now
-      </Text>
-    </Card>
+              return (
+                <Flex
+                  key={key}
+                  align="center"
+                  gap={14}
+                  style={{
+                    flex: '1 1 140px', minWidth: 140,
+                    padding: '14px 16px', borderRadius: 14,
+                    background: 'rgba(255,255,255,0.02)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onClick={() => navigate('/knowledge-graph')}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLDivElement).style.background = `${color}0D`;
+                    (e.currentTarget as HTMLDivElement).style.borderColor = `${color}30`;
+                    (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.02)';
+                    (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(255,255,255,0.06)';
+                    (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
+                  }}
+                >
+                  <MiniGauge value={val} color={color} trail={trail} />
+
+                  <Flex vertical gap={5}>
+                    <Flex align="center" gap={5}>
+                      <span style={{ fontSize: 14 }}>{emoji}</span>
+                      <Text style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{label}</Text>
+                    </Flex>
+
+                    <Text style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                      Overall Showoff
+                    </Text>
+
+                    {trend !== 0 && (
+                      <Tag
+                        icon={trendUp ? <RiseOutlined /> : trendDown ? <FallOutlined /> : undefined}
+                        style={{
+                          margin: 0, fontSize: 10, width: 'fit-content', borderRadius: 6,
+                          background: trendUp ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.10)',
+                          border: `1px solid ${trendUp ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`,
+                          color: trendUp ? '#10B981' : '#EF4444',
+                        }}
+                      >
+                        {trendUp ? '+' : ''}{trend}
+                      </Tag>
+                    )}
+                  </Flex>
+                </Flex>
+              );
+            })}
+          </Flex>
+        )}
+
+        {/* Footer hint */}
+        <Text style={{ fontSize: 11, color: 'var(--text-tertiary)', display: 'block', marginTop: 16, textAlign: 'center' }}>
+          Click any score to see the full breakdown in Knowledge Graph →
+        </Text>
+      </div>
+    </div>
   );
 }
