@@ -142,6 +142,30 @@ namespace BE.Migrations
                     b.ToTable("OAuthTokens", (string)null);
                 });
 
+            modelBuilder.Entity("BE.Models.ProfileScore", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BreakdownJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("ProfileScores", (string)null);
+                });
+
             modelBuilder.Entity("BE.Models.ResumeFile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -288,9 +312,15 @@ namespace BE.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("NOW()");
 
+                    b.Property<bool>("IsStale")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("ResultJson")
                         .IsRequired()
                         .HasColumnType("jsonb");
+
+                    b.Property<Guid?>("ResumeFileId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
@@ -298,6 +328,9 @@ namespace BE.Migrations
                         .HasDefaultValueSql("NOW()");
 
                     b.HasKey("UserId");
+
+                    b.HasIndex("ResumeFileId")
+                        .HasDatabaseName("IX_UserAnalyses_ResumeFileId");
 
                     b.ToTable("UserAnalyses", (string)null);
                 });
@@ -324,6 +357,17 @@ namespace BE.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("BE.Models.ProfileScore", b =>
+                {
+                    b.HasOne("BE.Models.User", "User")
+                        .WithOne()
+                        .HasForeignKey("BE.Models.ProfileScore", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("BE.Models.ResumeFile", b =>
                 {
                     b.HasOne("BE.Models.User", "User")
@@ -337,11 +381,18 @@ namespace BE.Migrations
 
             modelBuilder.Entity("BE.Models.UserAnalysis", b =>
                 {
+                    b.HasOne("BE.Models.ResumeFile", "ResumeFile")
+                        .WithMany()
+                        .HasForeignKey("ResumeFileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("BE.Models.User", "User")
                         .WithOne()
                         .HasForeignKey("BE.Models.UserAnalysis", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("ResumeFile");
 
                     b.Navigation("User");
                 });

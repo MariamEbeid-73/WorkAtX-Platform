@@ -44,6 +44,9 @@ public class InternalAiController : ControllerBase
             .FirstOrDefaultAsync(a => a.UserId == userId)
             ?? throw new NotFoundException($"No Analysis 1 result found for user {userId}.");
 
+        if (analysis.IsStale)
+            throw new NotFoundException($"Analysis 1 result for user {userId} is stale — a re-parse is in progress.");
+
         var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
 
         object? analysisResult = null;

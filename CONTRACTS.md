@@ -4,14 +4,14 @@ Single source of truth for the interfaces owned by **Task 2** (Job Creation, Pro
 
 Status of the contracts:
 - **Task C (Rana)** — worker consumes these jobs. Queue format verified end-to-end with a real Celery worker.
-- **Task A (Faris)** — frontend reads `jobId`, polls `/status`, fetches `/result`, triggers `/analysis1/start`.
+- **Task A (Faris)** — CV upload auto-triggers parsing (no analysis call needed). Frontend reads `jobId` from confirm, polls `/status`, fetches `/result`, reads scores from `/api/profile/scores`.
 - **Task D (Mariam Alaa)** — writes `Stage`/`Progress` for `gap_analysis` jobs only.
 
 ---
 
 ## 1. Overview
 
-Every incoming request — a chat message, an onboarding completion — becomes a **job** that travels through a lifecycle:
+Every incoming request — a chat message, an onboarding CV confirm — becomes a **job** that travels through a lifecycle:
 
 ```
 queued → processing → completed
@@ -20,11 +20,13 @@ queued → processing → completed
 
 The job record is created first, **then** a message is published to the queue. This guarantees the record always exists before the worker can pick the message up.
 
+**Analysis 1 is fully automatic:** confirming a CV upload creates + queues an `analysis1` job with **no user action** (and no frontend call). Parsing happens regardless of whether the user ever asks a question. If the user uploads a new CV later, the previous analysis is marked stale and a re-parse is queued.
+
 ---
 
 ## 2. Database
 
-Migration: `AddJobTrackingAndAnalysis` (`20260731072756_AddJobTrackingAndAnalysis`).
+Migrations: `AddJobTrackingAndAnalysis` (`20260731072756_...`) and `AddAnalysisStalenessAndProfileScores` (`20260731095004_...`).
 
 ### `Jobs` table
 
@@ -48,8 +50,37 @@ Migration: `AddJobTrackingAndAnalysis` (`20260731072756_AddJobTrackingAndAnalysi
 |---------------|---------------|-------|
 | `UserId`      | `uuid` (PK, FK→Users) | One row per user |
 | `ResultJson`  | `jsonb`       | Combined Analysis 1 result (CV + GitHub + LinkedIn) |
+| `ResumeFileId`| `uuid` (FK→ResumeFiles, `SET NULL`) | Resume this analysis was parsed from; drives re-parse detection |
+| `IsStale`     | `boolean`     | `true` once a newer CV is confirmed while this result is in flight |
 | `CreatedAt`   | `timestamptz` | Default `NOW()` |
 | `UpdatedAt`   | `timestamptz` | Default `NOW()` |
+
+Staleness rules:
+- Confirming a **new** CV sets `IsStale = true` on the old row and queues a re-parse.
+- The AI context endpoint returns **404** while `IsStale` is true — a superseded result is treated as "no analysis".
+- The worker clears the flag: after parsing, set `ResumeFileId` (to the parsed resume) and `IsStale = false`.
+
+### `ProfileScores` table
+
+| Column          | Type      | Notes |
+|-----------------|-----------|-------|
+| `UserId`        | `uuid` (PK, FK→Users) | One row per user |
+| `BreakdownJson` | `jsonb`   | Score breakdown — camelCase shape of the frontend's `ScoreBreakdown` type |
+| `CreatedAt`     | `timestamptz` | Default `NOW()` |
+| `UpdatedAt`     | `timestamptz` | Default `NOW()` |
+
+`BreakdownJson` shape (mirrors FE `FE/src/types/profile.ts` → `ScoreBreakdown`):
+
+```json
+{
+  "overall": { "overallShowoff": {...ScoreMetric}, "resume": {...}, "github": {...} },
+  "dev":     { "overallShowoff": {...}, "resume": {...}, "github": {...} },
+  "aiml":    { "overallShowoff": {...}, "resume": {...}, "github": {...} }
+}
+```
+
+Where `ScoreMetric = { "label": "...", "value": 0-100, "trend": 0|null, "lastUpdated": "...?" }`.
+The dashboard's `ScoreBreakdownCard` renders `data: null` (not computed yet) with fallback values — **do not 404** when the row is missing.
 
 ### Constants
 
@@ -104,6 +135,13 @@ The .NET backend publishes to **Redis** in **Kombu's format**, so the Celery wor
 | Final gap analysis | `ResultJson = <object>`, `Status = completed` |
 | Failed (retries exhausted) | `Status = failed`, `Error = <reason>` |
 
+**Analysis 1 completion (worker-side):**
+1. Parse the CV from MinIO (`s3Key`) + GitHub/LinkedIn via the internal context endpoint.
+2. Write the combined result to `UserAnalyses` (upsert by `UserId`): set `ResultJson`, `ResumeFileId = <job payload's resumeFileId>`, `IsStale = false`.
+3. Write extracted profile fields into `Users` (`yearsOfExperience`, `techStack`, `degree`, `graduationYear`) — only overwrite when the user hasn't manually edited them.
+4. Write the score breakdown to `ProfileScores.BreakdownJson` (shape in §2).
+5. Set the job `Status = completed`.
+
 Never leave a job stuck in `processing` — always resolve to `completed` or `failed`.
 
 ---
@@ -117,6 +155,8 @@ Never leave a job stuck in `processing` — always resolve to `completed` or `fa
 | `chat`    | `{ "userId": "<guid>", "message": "..." }` |
 | `analysis1` | `{ "userId": "<guid>", "resumeFileId": "<guid>", "s3Key": "...", "fileName": "...", "contentType": "...", "githubUrl": "...?" , "linkedinUrl": "...?" }` |
 | `gap_analysis` | Same as the `chat` job it escalated from (mutable in place) |
+
+`analysis1` jobs are created automatically by `POST /resumes/{id}/confirm` (one active parse per user at a time — if a job for the same resume is already `queued`/`processing`, it is reused instead of duplicated).
 
 ### `ResultJson` (polymorphic)
 
@@ -140,6 +180,8 @@ All endpoints except `/api/internal/*` require a **Clerk JWT** (`Authorization: 
 | `/api/jobs/{id}/status` | GET | Clerk + ownership | status object (below) |
 | `/api/jobs/{id}/result` | GET | Clerk + ownership | result object (below) |
 | `/api/analysis1/start` | POST | Clerk | `{ "jobId": "<guid>" }` |
+| `/resumes/{id}/confirm` | POST | Clerk | `{ "resume": {...}, "analysisJobId": "<guid>|null" }` |
+| `/api/profile/scores` | GET | Clerk | score breakdown or `data: null` |
 | `/api/internal/ai/context/{userId}` | GET | `X-Service-Token` | AI context (below) |
 
 ### `POST /api/chat/message`
@@ -180,15 +222,38 @@ Request: `{ "content": "..." }`
 
 ### `POST /api/analysis1/start`
 
-Onboarding-completion hook. Creates + queues an `analysis1` job automatically.
+Manual "re-run analysis" endpoint (also the original onboarding-completion hook). Creates + queues an `analysis1` job using the user's latest confirmed resume.
 
 - **409** — no confirmed resume exists for the user (upload CV first).
 - **Success** — `{ "jobId": "<guid>" }`, then poll the same `/status` endpoint.
+- **Note:** with auto-trigger on confirm, the frontend no longer needs to call this during onboarding. It exists for manual refresh / retry.
+
+### `POST /resumes/{id}/confirm`
+
+Step 2 of the CV upload flow. Marks the resume confirmed **and automatically creates + queues the `analysis1` parse job** — no frontend analysis call needed.
+
+```json
+{
+  "resume": {
+    "id": "<guid>", "fileName": "...", "contentType": "...",
+    "sizeBytes": 1234, "uploadedAt": "2026-07-31T..."
+  },
+  "analysisJobId": "<guid>"
+}
+```
+
+- `analysisJobId` is present when a parse was created (new or changed resume).
+- `analysisJobId` is `null` when this exact resume was already parsed (idempotent re-confirm) — the frontend can then skip the progress view.
+- Frontend can poll `GET /api/jobs/{analysisJobId}/status` for real parse progress instead of a fake spinner.
+
+### `GET /api/profile/scores`
+
+Returns the score breakdown for the current user. `data` is `null` until the AI worker writes the score row — render fallbacks, do not error.
 
 ### `GET /api/internal/ai/context/{userId}` (service-to-service)
 
 - Auth: header `X-Service-Token: <token>` (configured via `ServiceAuth__Token`). **Not** a Clerk JWT — the AI service calls this directly and synchronously mid-processing.
-- 401 without/with a bad token; 404 if the user has no Analysis 1 result yet.
+- 401 without/with a bad token; 404 if the user has no Analysis 1 result **or the result is stale** (a re-parse is in flight — do not mix a superseded analysis into a new parse).
 - Fast: single indexed lookup keyed by `UserId`; does **not** depend on any job state.
 
 ```json
@@ -244,15 +309,17 @@ The task/queue names on the worker side **must match** the backend's `Redis__Cel
 | Concern | Owner |
 |---------|-------|
 | Create job records, publish queue messages | Task 2 (Mariam) |
-| Serve `/status`, `/result`, `/analysis1/start`, `/internal/ai/context` | Task 2 (Mariam) |
-| Consume queue messages, call AI, update `Status`/`JobType`/`ResultJson`/`Error` | Task C (Rana) |
+| Auto-trigger `analysis1` on CV confirm; staleness (re-parse) logic | Task 2 (Mariam) |
+| Serve `/status`, `/result`, `/analysis1/start`, `/internal/ai/context`, `/profile/scores` | Task 2 (Mariam) |
+| Consume queue messages, call AI, update `Status`/`JobType`/`ResultJson`/`Error`; write `UserAnalyses`, `ProfileScores`, parsed `Users` fields after Analysis 1 | Task C (Rana) |
 | Write `Stage`/`Progress` for `gap_analysis` jobs; WebSocket pushes | Task D (Mariam Alaa) |
-| Send chat messages, poll `/status`, fetch `/result`, call `/analysis1/start` | Task A (Faris) |
+| Send chat messages, poll `/status`, fetch `/result`; read `/profile/scores`; poll `analysisJobId` from confirm | Task A (Faris) |
 
 ---
 
 ## 8. Known gaps / next steps
 
-- **AI payload shape is not finalized.** `UserAnalyses.ResultJson` and the context endpoint are deliberately **over-inclusive** until the AI team confirms the exact Analysis 1 field contract. Once confirmed, the response can be trimmed — no schema change required.
+- **AI payload shape is not finalized.** `UserAnalyses.ResultJson`, `ProfileScores.BreakdownJson`, and the context endpoint are deliberately **over-inclusive** until the AI team confirms the exact Analysis 1 field contract. Once confirmed, the response can be trimmed — no schema change required.
 - **WebSocket event contract** (Task D): stage list, per-event fields, and completion semantics still to be confirmed between AI team and Task D; `Stage`/`Progress` columns are ready.
-- **Worker code does not exist yet** — `./Worker` (Task C) is pending and depends on §3.
+- **Worker code does not exist yet** — `./Worker` (Task C) is pending and depends on §3. Until then, `analysis1`/`chat` jobs stay `queued` (no consumer).
+- **`analysis1/start` is now redundant for onboarding** (auto-triggered by confirm) — kept as a manual re-run hook. Confirm with Task A that nothing calls it during onboarding anymore.
