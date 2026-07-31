@@ -3,7 +3,7 @@
 Single source of truth for the interfaces owned by **Task 2** (Job Creation, Profile Storage & AI-Facing Endpoints). Everyone else reads this instead of digging through code.
 
 Status of the contracts:
-- **Task C (Rana)** — worker consumes these jobs. Queue format verified end-to-end with a real Celery worker.
+- **Task C (Rana)** — worker consumes these jobs (queue format verified end-to-end with a real Celery worker) and drives them entirely over the internal HTTP endpoints — **no DB access**.
 - **Task A (Faris)** — CV upload auto-triggers parsing (no analysis call needed). Frontend reads `jobId` from confirm, polls `/status`, fetches `/result`, reads scores from `/api/profile/scores`.
 - **Task D (Mariam Alaa)** — writes `Stage`/`Progress` for `gap_analysis` jobs only.
 
@@ -58,7 +58,7 @@ Migrations: `AddJobTrackingAndAnalysis` (`20260731072756_...`) and `AddAnalysisS
 Staleness rules:
 - Confirming a **new** CV sets `IsStale = true` on the old row and queues a re-parse.
 - The AI context endpoint returns **404** while `IsStale` is true — a superseded result is treated as "no analysis".
-- The worker clears the flag: after parsing, set `ResumeFileId` (to the parsed resume) and `IsStale = false`.
+- The backend's `POST /api/internal/ai/jobs/{jobId}/result` clears the flag when the fresh parse lands: it writes `ResumeFileId` (from the job payload) and `IsStale = false`. **The worker never touches the DB.**
 
 ### `ProfileScores` table
 
@@ -125,22 +125,20 @@ The .NET backend publishes to **Redis** in **Kombu's format**, so the Celery wor
 - Key casing is significant: `content-type` / `content-encoding` (kebab-case), everything else inside `headers`/`properties` is snake_case (`root_id`, `delivery_tag`, ...).
 - If the task name in the worker does **not** match `worker.tasks.process_job`, Celery logs `Received unregistered task of type 'worker.tasks.process_job'` and the job stalls. Keep the names in sync (or align the config — see §6).
 
-**Worker responsibilities (Task C):** read the job by `jobId` from the DB, do the AI work, and write back:
+**Worker responsibilities (Task C):** the worker is **AI-only and stateless — it has no DB access.** It consumes the queue message (jobId), then drives the job entirely over HTTP:
 
-| Event | Write |
-|-------|-------|
-| Started processing | `Status = processing` |
-| Escalated to gap analysis | `JobType = gap_analysis` (same jobId, keep going) |
-| Plain chat reply | `ResultJson = "<json string>"`, `Status = completed` |
-| Final gap analysis | `ResultJson = <object>`, `Status = completed` |
-| Failed (retries exhausted) | `Status = failed`, `Error = <reason>` |
+1. `GET /api/internal/ai/jobs/{jobId}` → full job + decoded payload.
+2. `GET /api/internal/ai/resume/{resumeFileId}/download-url` → pre-signed CV URL (analysis1 jobs).
+3. `POST /api/internal/ai/jobs/{jobId}/status` with `{ "status": "processing" }` → marks the job `processing`; escalate with `{ "jobType": "gap_analysis" }`.
+4. `GET /api/internal/ai/context/{userId}` → user + stored analysis context.
+5. `POST /api/internal/ai/jobs/{jobId}/result` with `{ "status": "completed", "resultJson": "<json>" }` or `{ "status": "failed", "error": "<reason>" }` → **the backend** routes and stores the result.
 
-**Analysis 1 completion (worker-side):**
-1. Parse the CV from MinIO (`s3Key`) + GitHub/LinkedIn via the internal context endpoint.
-2. Write the combined result to `UserAnalyses` (upsert by `UserId`): set `ResultJson`, `ResumeFileId = <job payload's resumeFileId>`, `IsStale = false`.
-3. Write extracted profile fields into `Users` (`yearsOfExperience`, `techStack`, `degree`, `graduationYear`) — only overwrite when the user hasn't manually edited them.
-4. Write the score breakdown to `ProfileScores.BreakdownJson` (shape in §2).
-5. Set the job `Status = completed`.
+**The backend (Task 2) owns ALL writes.** `Jobs`, `UserAnalyses`, `ProfileScores`, and parsed `Users` fields are mutated only server-side. The worker returns JSON; Task 2 stores it.
+
+**Analysis 1 completion (backend-side, via `/result`):**
+1. Worker parses the CV (from the pre-signed download URL) + GitHub/LinkedIn, and POSTs the combined result as `resultJson`.
+2. The backend upserts `UserAnalyses` by `UserId`: `ResultJson = resultJson`, `ResumeFileId` = the analysis1 payload's `resumeFileId`, `IsStale = false`.
+3. The job is marked `completed`. Extracting `ProfileScores` / parsed `Users` fields from the result is a **separate concern** (score mapping is out of Task 2's scope) and waits on the AI team's field contract (§8).
 
 Never leave a job stuck in `processing` — always resolve to `completed` or `failed`.
 
@@ -183,6 +181,10 @@ All endpoints except `/api/internal/*` require a **Clerk JWT** (`Authorization: 
 | `/resumes/{id}/confirm` | POST | Clerk | `{ "resume": {...}, "analysisJobId": "<guid>|null" }` |
 | `/api/profile/scores` | GET | Clerk | score breakdown or `data: null` |
 | `/api/internal/ai/context/{userId}` | GET | `X-Service-Token` | AI context (below) |
+| `/api/internal/ai/jobs/{jobId}` | GET | `X-Service-Token` | full job + decoded payload |
+| `/api/internal/ai/resume/{resumeFileId}/download-url` | GET | `X-Service-Token` | `{ "url", "expiresAt" }` |
+| `/api/internal/ai/jobs/{jobId}/status` | POST | `X-Service-Token` | updated job view |
+| `/api/internal/ai/jobs/{jobId}/result` | POST | `X-Service-Token` | `{ "id", "status" }` |
 
 ### `POST /api/chat/message`
 
@@ -271,6 +273,50 @@ Returns the score breakdown for the current user. `data` is `null` until the AI 
 }
 ```
 
+### `GET /api/internal/ai/jobs/{jobId}` (service-to-service)
+
+- Auth: `X-Service-Token` header.
+- Returns the full job + decoded payload. **This is the worker's entry point** — the queue message only carries the `jobId`.
+- 404 if the job doesn't exist.
+
+```json
+{
+  "id": "<guid>",
+  "jobType": "analysis1",
+  "status": "queued",
+  "payload": { "userId": "...", "resumeFileId": "...", "s3Key": "...", "githubUrl": "...", "linkedinUrl": "..." },
+  "createdAt": "2026-07-31T...",
+  "updatedAt": "2026-07-31T..."
+}
+```
+
+### `GET /api/internal/ai/resume/{resumeFileId}/download-url` (service-to-service)
+
+- Auth: `X-Service-Token` header.
+- Returns a short-lived pre-signed GET URL (1h) so the worker can download the CV directly from MinIO/S3 — no storage credentials needed.
+- 404 if the resume file doesn't exist.
+
+```json
+{ "url": "https://.../resumes/...?...", "expiresAt": "2026-07-31T..." }
+```
+
+### `POST /api/internal/ai/jobs/{jobId}/status` (service-to-service)
+
+- Auth: `X-Service-Token` header.
+- Body: `{ "status": "processing", "jobType": "gap_analysis" }` — `jobType` is optional and only legal on a `chat` job (flips it to `gap_analysis`).
+- Returns the updated job view (same shape as `GET /jobs/{jobId}`).
+- Errors: 400 on an unsupported status or illegal escalation; 404 unknown job; 409 job already terminal.
+- **Does not touch `Stage`/`Progress`** — those are owned by the Redis stream consumer (Task D).
+
+### `POST /api/internal/ai/jobs/{jobId}/result` (service-to-service)
+
+- Auth: `X-Service-Token` header.
+- Body: `{ "status": "completed", "resultJson": "<json string>" }` or `{ "status": "failed", "error": "<reason>" }`.
+- **The backend owns the routing:**
+  - `analysis1` completed → upserts `UserAnalyses` (`ResultJson`, `ResumeFileId` from payload, `IsStale = false`) and marks the job `completed`.
+  - `chat`/`gap_analysis` completed → `Jobs.ResultJson`, job `completed`; failed → `Jobs.Error`, job `failed`.
+- Errors: 400 missing `resultJson`/`error`; 404 unknown job; **409 double-submit** on an already-terminal job.
+
 ### Ownership & errors
 
 - `404` — job/analysis not found.
@@ -310,8 +356,9 @@ The task/queue names on the worker side **must match** the backend's `Redis__Cel
 |---------|-------|
 | Create job records, publish queue messages | Task 2 (Mariam) |
 | Auto-trigger `analysis1` on CV confirm; staleness (re-parse) logic | Task 2 (Mariam) |
-| Serve `/status`, `/result`, `/analysis1/start`, `/internal/ai/context`, `/profile/scores` | Task 2 (Mariam) |
-| Consume queue messages, call AI, update `Status`/`JobType`/`ResultJson`/`Error`; write `UserAnalyses`, `ProfileScores`, parsed `Users` fields after Analysis 1 | Task C (Rana) |
+| Serve `/status`, `/result`, `/analysis1/start`, `/internal/ai/context`, `/internal/ai/jobs/*`, `/internal/ai/resume/*`, `/profile/scores` | Task 2 (Mariam) |
+| **All** DB writes — `Jobs`, `UserAnalyses`, `ProfileScores`, parsed `Users` fields. The worker has no DB access and reports results over HTTP | Task 2 (Mariam) |
+| Consume queue messages, do the AI work, report progress + results via the internal HTTP endpoints | Task C (Rana) |
 | Write `Stage`/`Progress` for `gap_analysis` jobs; WebSocket pushes | Task D (Mariam Alaa) |
 | Send chat messages, poll `/status`, fetch `/result`; read `/profile/scores`; poll `analysisJobId` from confirm | Task A (Faris) |
 
@@ -321,5 +368,7 @@ The task/queue names on the worker side **must match** the backend's `Redis__Cel
 
 - **AI payload shape is not finalized.** `UserAnalyses.ResultJson`, `ProfileScores.BreakdownJson`, and the context endpoint are deliberately **over-inclusive** until the AI team confirms the exact Analysis 1 field contract. Once confirmed, the response can be trimmed — no schema change required.
 - **WebSocket event contract** (Task D): stage list, per-event fields, and completion semantics still to be confirmed between AI team and Task D; `Stage`/`Progress` columns are ready.
-- **Worker code does not exist yet** — `./Worker` (Task C) is pending and depends on §3. Until then, `analysis1`/`chat` jobs stay `queued` (no consumer).
+- **Worker code does not exist yet** — `./Worker` (Task C) is pending and depends on §3 + the internal endpoints in §5 (job fetch, resume download, status, result). Until then, `analysis1`/`chat` jobs stay `queued` (no consumer).
+- **Score mapping is out of Task 2's scope** — `ProfileScores.BreakdownJson` and parsed `Users` fields are not derived by the result endpoint yet; they're owned elsewhere and wait on the AI team's field contract.
+- **LinkedIn data is minimal** — current OAuth scope (`openid profile email`) returns only name/email/sub, and `Users.LinkedinUrl` holds the display *name*, not a URL. Treat LinkedIn as name/email-only until richer scopes are obtainable.
 - **`analysis1/start` is now redundant for onboarding** (auto-triggered by confirm) — kept as a manual re-run hook. Confirm with Task A that nothing calls it during onboarding anymore.
