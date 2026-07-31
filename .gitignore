@@ -59,4 +59,3 @@ certs/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
-CONTRACTS.md
