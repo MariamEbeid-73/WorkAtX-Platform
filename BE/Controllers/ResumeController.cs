@@ -31,7 +31,9 @@ public class ResumeController : ControllerBase
 
     /// <summary>
     /// Step 2 of 2. Call this after the browser finishes uploading to MinIO.
-    /// Marks the ResumeFile record as confirmed so it appears in listings.
+    /// Marks the ResumeFile record as confirmed so it appears in listings,
+    /// and automatically creates + queues the Analysis 1 parse job. The
+    /// response's analysisJobId lets the frontend poll real parse progress.
     /// </summary>
     [HttpPost("{id:guid}/confirm")]
     public async Task<IActionResult> ConfirmUpload(Guid id)

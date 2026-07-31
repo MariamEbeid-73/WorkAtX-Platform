@@ -21,17 +21,23 @@ public class ResumeService : IResumeService
     private readonly ICurrentUserService _currentUserService;
     private readonly IUserService _userService;
     private readonly IFileStorageService _fileStorage;
+    private readonly IJobService _jobService;
+    private readonly IJobQueueService _jobQueueService;
 
     public ResumeService(
         AppDbContext db,
         ICurrentUserService currentUserService,
         IUserService userService,
-        IFileStorageService fileStorage)
+        IFileStorageService fileStorage,
+        IJobService jobService,
+        IJobQueueService jobQueueService)
     {
         _db                 = db;
         _currentUserService = currentUserService;
         _userService        = userService;
         _fileStorage        = fileStorage;
+        _jobService         = jobService;
+        _jobQueueService    = jobQueueService;
     }
 
     public async Task<UploadIntentResponse> CreateUploadIntentAsync(UploadIntentRequest request)
@@ -74,12 +80,62 @@ public class ResumeService : IResumeService
         return new UploadIntentResponse(newId, uploadUrl);
     }
 
-    public async Task<ResumeFileDto> ConfirmUploadAsync(Guid resumeId)
+    public async Task<ConfirmUploadResponse> ConfirmUploadAsync(Guid resumeId)
     {
         var resume = await GetOwnedResumeAsync(resumeId);
+
+        var clerkUserId = _currentUserService.GetClerkUserId();
+        var email       = _currentUserService.GetEmail();
+        var user        = await _userService.GetOrCreateUserAsync(clerkUserId, email);
+
         resume.IsConfirmed = true;
+
+        // This exact resume was already parsed and is not stale → nothing to do.
+        var analysis = await _db.UserAnalyses.FirstOrDefaultAsync(a => a.UserId == user.Id);
+        if (analysis is not null && analysis.ResumeFileId == resume.Id && !analysis.IsStale)
+        {
+            await _db.SaveChangesAsync();
+            return new ConfirmUploadResponse(ToDto(resume), null);
+        }
+
+        // A parse for this exact resume is already queued/processing → reuse its jobId.
+        var activeJobId = await _db.Jobs
+            .Where(j => j.UserId == user.Id
+                     && j.JobType == JobType.Analysis1
+                     && (j.Status == JobStatus.Queued || j.Status == JobStatus.Processing)
+                     && j.PayloadJson != null
+                     && j.PayloadJson.Contains($"\"resumeFileId\":\"{resume.Id}\""))
+            .OrderByDescending(j => j.CreatedAt)
+            .Select(j => (Guid?)j.Id)
+            .FirstOrDefaultAsync();
+
+        if (activeJobId.HasValue)
+        {
+            await _db.SaveChangesAsync();
+            return new ConfirmUploadResponse(ToDto(resume), activeJobId);
+        }
+
+        // The existing analysis belongs to an older resume → mark it stale so the
+        // AI context endpoint 404s until the fresh parse lands.
+        if (analysis is not null && analysis.ResumeFileId != resume.Id)
+            analysis.IsStale = true;
+
         await _db.SaveChangesAsync();
-        return ToDto(resume);
+
+        var job = await _jobService.CreateAsync(user.Id, JobType.Analysis1, new
+        {
+            userId = user.Id,
+            resumeFileId = resume.Id,
+            s3Key = resume.S3Key,
+            fileName = resume.FileName,
+            contentType = resume.ContentType,
+            githubUrl = user.GithubUrl,
+            linkedinUrl = user.LinkedinUrl,
+        });
+
+        await _jobQueueService.PublishAsync(job.Id);
+
+        return new ConfirmUploadResponse(ToDto(resume), job.Id);
     }
 
     public async Task<IEnumerable<ResumeFileDto>> ListResumesAsync()

@@ -69,4 +69,17 @@ public class ProfileController : ControllerBase
         var result = await _profileService.ToggleOpenToWorkAsync(request.IsOpenToWork);
         return Ok(ApiResponse<object>.Ok(new { isOpenToWork = result }));
     }
+
+    /// <summary>
+    /// GET /api/profile/scores
+    /// Returns the score breakdown (overall/dev/aiml tabs) computed by the
+    /// AI worker after Analysis 1. data is null until that completes — the
+    /// dashboard falls back to placeholder values instead of erroring.
+    /// </summary>
+    [HttpGet("scores")]
+    public async Task<IActionResult> GetScoreBreakdown()
+    {
+        var scores = await _profileService.GetScoreBreakdownAsync();
+        return Ok(ApiResponse<object?>.Ok(scores));
+    }
 }

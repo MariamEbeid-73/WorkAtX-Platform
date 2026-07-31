@@ -75,6 +75,10 @@ services:
       OAuth__LinkedIn__RedirectUri: "http://localhost:5000/oauth/linkedin/callback"
       OAuth__FrontendCallbackUrl: "${FRONTEND_URL:-http://localhost:4200}/oauth-return"
       Encryption__Key: "${ENCRYPTION_KEY:-2JGGQQujI4auE8XfUHisIVNJ3AGayFN4ygljCRFmgms=}"
+      Redis__Configuration: "redis:6379,abortConnect=false"
+      Redis__CeleryTask: "${CELERY_TASK:-worker.tasks.process_job}"
+      Redis__CeleryQueue: "${CELERY_QUEUE:-celery}"
+      ServiceAuth__Token: "${SERVICE_AUTH_TOKEN:-dev-service-token}"
     ports:
       - "5000:5000"
     depends_on:
@@ -113,28 +117,31 @@ services:
       - "4200:80"
     depends_on:
       - be
-  worker:
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    build:
-      context: ./Worker
-      dockerfile: Dockerfile
-    container_name: workx-worker
-    environment:
-      AI_SERVICE_URL: "${AI_SERVICE_URL:-http://host.docker.internal:8000}"
-      REDIS_URL: "redis://redis:6379/0"
-      DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-WorkX@Password2026}@db:5432/${DB_NAME:-WorkXDb}"
-      S3_ENDPOINT: "http://minio:9000"
-      S3_BUCKET: "${S3_BUCKET_NAME:-workx-resumes}"
-      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-minioadmin}"
-      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-minioadmin}"
-    depends_on:
-      redis:
-        condition: service_healthy
-      db:
-        condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
+  # worker:
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
+  #   build:
+  #     context: ./Worker
+  #     dockerfile: Dockerfile
+  #   container_name: workx-worker
+  #   environment:
+  #     AI_SERVICE_URL: "${AI_SERVICE_URL:-http://host.docker.internal:8000}"
+  #     REDIS_URL: "redis://redis:6379/0"
+  #     DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-WorkX@Password2026}@db:5432/${DB_NAME:-WorkXDb}"
+  #     S3_ENDPOINT: "http://minio:9000"
+  #     S3_BUCKET: "${S3_BUCKET_NAME:-workx-resumes}"
+  #     AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-minioadmin}"
+  #     AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-minioadmin}"
+  #     CELERY_TASK: "${CELERY_TASK:-worker.tasks.process_job}"
+  #     CELERY_QUEUE: "${CELERY_QUEUE:-celery}"
+  #     SERVICE_AUTH_TOKEN: "${SERVICE_AUTH_TOKEN:-dev-service-token}"
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #     db:
+  #       condition: service_healthy
+  #     minio-init:
+  #       condition: service_completed_successfully
 
 volumes:
   workx-db-data:

@@ -18,7 +18,7 @@ builder.Services.AddControllers().AddJsonOptions(options =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSwaggerDocumentation();
 builder.Services.AddClerkAuthentication(builder.Configuration);
-builder.Services.AddApplicationServices();
+builder.Services.AddApplicationServices(builder.Configuration);
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
