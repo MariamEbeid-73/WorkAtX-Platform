@@ -1,66 +1,93 @@
+import logging
+import requests
 from celery_app import app
-from app.ai_client import AIClient
-from app.db import DatabaseService
-from app.mapper import ResultMapper
-from app.progress_publisher import ProgressPublisher
+from app import backend_client
+from tasks.chat_job import handle_chat
+from tasks.gap_analysis_job import handle_gap_analysis
+from tasks.analysis1_job import handle_analysis_1
+
+logger = logging.getLogger(__name__)
+
+JOB_TYPE_CHAT = "chat"
+JOB_TYPE_GAP_ANALYSIS = "gap_analysis"
+JOB_TYPE_ANALYSIS_1 = "analysis1"
+
+STATUS_PROCESSING = "processing"
+STATUS_FAILED = "failed"
 
 
 @app.task(
+    name="worker.tasks.process_job",
     bind=True,
-    max_retries=3
+    max_retries=3,
+    soft_time_limit=120,
+    time_limit=130
 )
-def process_job(self, job):
+def process_job(self, jobId: str = None, **kwargs):
+    return _process_job_impl(self, jobId=jobId, **kwargs)
 
-    job_id = job["jobId"]
 
-    db = DatabaseService()
-    ai_client = AIClient()
-    mapper = ResultMapper()
-    progress = ProgressPublisher()
+def _process_job_impl(self, jobId: str = None, **kwargs):
+    job_id = jobId or kwargs.get("jobId") or kwargs.get("job_id")
+    
+    if not job_id:
+        logger.error("[Job Dispatcher] Received task without a valid jobId payload!")
+        return {"status": STATUS_FAILED, "error": "Missing jobId"}
+
+    logger.info(f"[Job Dispatcher] [JobId={job_id}] Processing attempt {self.request.retries + 1}/{self.max_retries + 1}")
 
     try:
-        print(f"Processing job: {job_id}")
+        job_data = backend_client.get_job_details(job_id)
+        job_type = job_data.get("jobType")
+        
+        backend_client.update_job_status(job_id=job_id, status=STATUS_PROCESSING)
 
-        # 1. Update status
-        db.update_processing(job_id)
-        progress.publish(job_id, "processing")
+        if job_type == JOB_TYPE_CHAT:
+            return handle_chat(self, job_id, job_data)
+        elif job_type == JOB_TYPE_GAP_ANALYSIS:
+            return handle_gap_analysis(self, job_id, job_data)
+        elif job_type == JOB_TYPE_ANALYSIS_1:
+            return handle_analysis_1(self, job_id, job_data)
+        else:
+            raise NotImplementedError(f"Unsupported jobType: '{job_type}'")
 
-        # 2. Build AI request
-        payload = ai_client.build_request(job)
+    except requests.exceptions.HTTPError as http_err:
+        status_code = http_err.response.status_code if http_err.response is not None else 500
+        
+        if 400 <= status_code < 500:
+            logger.error(f"[Job Dispatcher] [JobId={job_id}] Fatal HTTP {status_code} state error: {http_err}")
+            _safe_submit_failed_status(job_id, str(http_err))
+            return {"jobId": job_id, "status": STATUS_FAILED, "error": str(http_err)}
 
-        # 3. Send to AI
-        ai_response = ai_client.submit_analysis(payload)
-
-        # 4. Map AI response
-        result = mapper.map_ai_response(ai_response)
-
-        # 5. Save result
-        db.save_result(job_id, result)
-        progress.publish(job_id, "completed")
-
-        return {
-            "jobId": job_id,
-            "status": "Completed"
-        }
+        return _handle_retry(self, http_err, job_id)
 
     except NotImplementedError as e:
-        # A dependency (AI contract, DB schema, etc.) isn't wired up yet.
-        # This will never succeed on retry, so fail fast instead of
-        # burning 3 retries with backoff for a guaranteed outcome.
-        print(f"Job {job_id} failed - dependency not implemented: {e}")
-        db.mark_failed(job_id, str(e))
-        progress.publish(job_id, "failed")
-        raise
+        logger.error(f"[Job Dispatcher] [JobId={job_id}] Fatal unrecoverable error: {e}")
+        _safe_submit_failed_status(job_id, str(e))
+        return {"jobId": job_id, "status": STATUS_FAILED, "error": str(e)}
 
+    except Exception as exc:
+        return _handle_retry(self, exc, job_id)
+
+
+def _safe_submit_failed_status(job_id: str, error_msg: str):
+    """
+    Attempts to report failure to the backend, but silently suppresses 
+    secondary HTTP 4xx errors if the job is already locked/completed.
+    """
+    try:
+        backend_client.submit_job_result(job_id=job_id, status=STATUS_FAILED, error=error_msg)
     except Exception as e:
-        print(f"Job failed: {job_id}")
-        print(e)
+        logger.warning(f"[Job Dispatcher] [JobId={job_id}] Could not update backend failure status (job may already be locked/closed): {e}")
 
-        if self.request.retries >= self.max_retries:
-            db.mark_failed(job_id, str(e))
-            progress.publish(job_id, "failed")
 
-        raise self.retry(
-            exc=e,
-            countdown=2 ** self.request.retries
-        )
+def _handle_retry(task_obj, exc, job_id: str):
+    """Handles exponential backoff retries and dead-lettering."""
+    retry_delay = 5 * (2 ** task_obj.request.retries)
+    if task_obj.request.retries >= task_obj.max_retries:
+        logger.error(f"[DEAD LETTER] [JobId={job_id}] Retries exhausted. Marking job failed: {exc}")
+        _safe_submit_failed_status(job_id, str(exc))
+        raise exc
+    else:
+        logger.warning(f"[Job Dispatcher] [JobId={job_id}] Retrying in {retry_delay}s due to transient error: {exc}")
+        raise task_obj.retry(exc=exc, countdown=retry_delay)

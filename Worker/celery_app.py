@@ -11,5 +11,8 @@ app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
-    broker_connection_retry_on_startup=True
+    broker_connection_retry_on_startup=True,
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    worker_prefetch_multiplier=1,
 )

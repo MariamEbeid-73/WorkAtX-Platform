@@ -1,18 +1,5 @@
-from tasks.process_job import process_job
+from celery_app import app
 
-job = {
-    "jobId": "123e4567",
-    "userId": "user_123",
-    "question": "Find my match for backend developer",
-    #Ai wiil take it from end point delete from here
-    "resumeData": {
-        "skills": ["C#", "SQL"],
-        "experience": []
-    }
-}
-
-result = process_job.delay(job)
-
-print("Task sent")
-print(result.id)
-#send message to redis it will change to real backend
+def trigger_test_job(job_id: str):
+    app.send_task("worker.tasks.process_job", kwargs={"jobId": job_id})
+    print(f"Enqueued test job for jobId={job_id}")
