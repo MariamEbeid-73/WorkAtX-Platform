@@ -17,18 +17,16 @@ services:
       retries: 10
       start_period: 20s
 
-
   redis:
     image: redis:7-alpine
     container_name: workx-redis
     ports:
       - "6379:6379"
     healthcheck:
-        test: ["CMD", "redis-cli", "ping"]
-        interval: 5s
-        timeout: 3s
-        retries: 5 
-
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5 
 
   minio:
     image: minio/minio:latest
@@ -39,8 +37,8 @@ services:
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
       MINIO_API_CORS_ALLOW_ORIGIN: "*"
     ports:
-      - "9000:9000" # S3 API endpoint
-      - "9001:9001" # Web UI — visit http://localhost:9001 to browse buckets
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - workx-minio-data:/data
     healthcheck:
@@ -49,6 +47,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
   be:
     build:
       context: ./BE
@@ -119,31 +118,35 @@ services:
       - "4200:80"
     depends_on:
       - be
+
   worker:
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    build:
-      context: ./Worker
-      dockerfile: Dockerfile
-    container_name: workx-worker
-    environment:
-      AI_SERVICE_URL: "${AI_SERVICE_URL:-http://host.docker.internal:8000}"
-      REDIS_URL: "redis://redis:6379/0"
-      DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-WorkX@Password2026}@db:5432/${DB_NAME:-WorkXDb}"
-      S3_ENDPOINT: "http://minio:9000"
-      S3_BUCKET: "${S3_BUCKET_NAME:-workx-resumes}"
-      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-minioadmin}"
-      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-minioadmin}"
-      CELERY_TASK: "${CELERY_TASK:-worker.tasks.process_job}"
-      CELERY_QUEUE: "${CELERY_QUEUE:-celery}"
-      SERVICE_AUTH_TOKEN: "${SERVICE_AUTH_TOKEN:-dev-service-token}"
-    depends_on:
-      redis:
-        condition: service_healthy
-      db:
-        condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
+      build:
+        context: ./Worker
+        dockerfile: Dockerfile
+      container_name: workx-worker
+      environment:
+              AI_SERVICE_BASE_URL: "${AI_SERVICE_BASE_URL:-http://host.docker.internal:8000}"
+              REDIS_URL: "redis://redis:6379/0"
+              CELERY_TASK: "${CELERY_TASK:-worker.tasks.process_job}"
+              CELERY_QUEUE: "${CELERY_QUEUE:-celery}"
+              SERVICE_AUTH_TOKEN: "${SERVICE_AUTH_TOKEN:-dev-service-token}"
+              MOCK_AI: "${MOCK_AI:-true}"
+              MOCK_AI_ASYNC_GAP: "${MOCK_AI_ASYNC_GAP:-false}"
+      depends_on:
+        redis:
+          condition: service_healthy
+        db:
+          condition: service_healthy
+        minio-init:
+          condition: service_completed_successfully
+      healthcheck:
+        test: ["CMD-SHELL", "celery -A celery_app inspect ping -d celery@$$HOSTNAME"]
+        interval: 30s
+        timeout: 10s
+        retries: 3
+        start_period: 15s
 
 volumes:
   workx-db-data:

@@ -45,11 +45,9 @@ def get_user_context(user_id: str) -> dict:
     response.raise_for_status()
     return response.json()
 
-def save_analysis1_profile(user_id: str, profile_json: dict) -> dict:
-    response = requests.post(
-        f"{BACKEND_BASE_URL}/api/internal/ai/context/{user_id}",
-        json={"profile": profile_json},
-        headers=HEADERS
-    )
-    response.raise_for_status()
-    return response.json()
+
+def submit_profile_scores(user_id: str, scores_data: dict):
+    url = f"{BACKEND_BASE_URL}/api/internal/ai/profile-scores/{user_id}"
+    resp = requests.post(url, json=scores_data, headers=HEADERS, timeout=10)
+    resp.raise_for_status()
+    return resp.json()

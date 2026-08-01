@@ -5,6 +5,7 @@ from app import backend_client
 from tasks.chat_job import handle_chat
 from tasks.gap_analysis_job import handle_gap_analysis
 from tasks.analysis1_job import handle_analysis_1
+from progress_publisher import publish_progress
 
 logger = logging.getLogger(__name__)
 
@@ -70,17 +71,6 @@ def _process_job_impl(self, jobId: str = None, **kwargs):
         return _handle_retry(self, exc, job_id)
 
 
-def _safe_submit_failed_status(job_id: str, error_msg: str):
-    """
-    Attempts to report failure to the backend, but silently suppresses 
-    secondary HTTP 4xx errors if the job is already locked/completed.
-    """
-    try:
-        backend_client.submit_job_result(job_id=job_id, status=STATUS_FAILED, error=error_msg)
-    except Exception as e:
-        logger.warning(f"[Job Dispatcher] [JobId={job_id}] Could not update backend failure status (job may already be locked/closed): {e}")
-
-
 def _handle_retry(task_obj, exc, job_id: str):
     """Handles exponential backoff retries and dead-lettering."""
     retry_delay = 5 * (2 ** task_obj.request.retries)
@@ -91,3 +81,13 @@ def _handle_retry(task_obj, exc, job_id: str):
     else:
         logger.warning(f"[Job Dispatcher] [JobId={job_id}] Retrying in {retry_delay}s due to transient error: {exc}")
         raise task_obj.retry(exc=exc, countdown=retry_delay)
+def _safe_submit_failed_status(job_id: str, error_msg: str):
+    try:
+        publish_progress(job_id=job_id, stage="failed", percent=100)
+    except Exception as e:
+        logger.warning(f"[Process Job] Failed to publish stream failure event for {job_id}: {e}")
+
+    try:
+        backend_client.submit_job_result(job_id=job_id, status=STATUS_FAILED, error=error_msg)
+    except Exception as e:
+        logger.error(f"[Process Job] Failed to submit terminal failure status for {job_id}: {e}")
