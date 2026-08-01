@@ -1,5 +1,7 @@
 using BE.Data;
 using BE.Extensions;
+using BE.Hubs;
+using BE.Services;
 using BE.Common.Middleware;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,6 +21,8 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddSwaggerDocumentation();
 builder.Services.AddClerkAuthentication(builder.Configuration);
 builder.Services.AddApplicationServices(builder.Configuration);
+builder.Services.AddSignalR();
+builder.Services.AddHostedService<GapAnalysisStreamConsumer>();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
@@ -47,6 +51,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<JobStatusHub>("/hubs/job-status");
 
 if (app.Environment.IsDevelopment())
 {
