@@ -205,7 +205,7 @@ public class InternalAiController : ControllerBase
         if (job.Status is JobStatus.Completed or JobStatus.Failed)
             throw new ConflictException($"Job {jobId} is already {job.Status} — refusing a double-submit.");
 
-        job.Status    = request.Status;
+        job.Status = request.Status;
         job.UpdatedAt = DateTimeOffset.UtcNow;
 
         if (job.JobType == JobType.Analysis1)
@@ -219,7 +219,7 @@ public class InternalAiController : ControllerBase
         {
             // chat / gap_analysis → the result lives on the job itself.
             job.ResultJson = request.Status == JobStatus.Completed ? request.ResultJson : null;
-            job.Error      = request.Status == JobStatus.Failed ? request.Error : null;
+            job.Error = request.Status == JobStatus.Failed ? request.Error : null;
         }
 
         await _db.SaveChangesAsync();
@@ -235,19 +235,19 @@ public class InternalAiController : ControllerBase
         {
             _db.UserAnalyses.Add(new UserAnalysis
             {
-                UserId       = job.UserId,
-                ResultJson   = resultJson,
+                UserId = job.UserId,
+                ResultJson = resultJson,
                 ResumeFileId = PayloadResumeFileId(job.PayloadJson),
-                IsStale      = false,
-                UpdatedAt    = DateTimeOffset.UtcNow,
+                IsStale = false,
+                UpdatedAt = DateTimeOffset.UtcNow,
             });
         }
         else
         {
-            analysis.ResultJson   = resultJson;
+            analysis.ResultJson = resultJson;
             analysis.ResumeFileId = PayloadResumeFileId(job.PayloadJson);
-            analysis.IsStale      = false;
-            analysis.UpdatedAt    = DateTimeOffset.UtcNow;
+            analysis.IsStale = false;
+            analysis.UpdatedAt = DateTimeOffset.UtcNow;
         }
     }
 
@@ -276,4 +276,25 @@ public class InternalAiController : ControllerBase
         => string.IsNullOrWhiteSpace(json)
             ? Array.Empty<string>()
             : JsonSerializer.Deserialize<string[]>(json) ?? Array.Empty<string>();
+
+    [HttpPost("profile-scores/{userId:guid}")]
+    public async Task<IActionResult> SubmitProfileScores(Guid userId, [FromBody] JsonElement scoreBreakdown)
+    {
+        if (!IsAuthorized(Request))
+            throw new UnauthorizedAppException("Invalid or missing service token.");
+
+        var score = await _db.ProfileScores.FirstOrDefaultAsync(s => s.UserId == userId);
+        var json = scoreBreakdown.GetRawText();
+
+        if (score is null)
+            _db.ProfileScores.Add(new ProfileScore { UserId = userId, BreakdownJson = json });
+        else
+        {
+            score.BreakdownJson = json;
+            score.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
+        await _db.SaveChangesAsync();
+        return Ok(new { userId, status = "saved" });
+    }
 }
