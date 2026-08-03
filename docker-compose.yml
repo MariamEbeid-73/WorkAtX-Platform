@@ -125,6 +125,7 @@ services:
       build:
         context: ./Worker
         dockerfile: Dockerfile
+      image: workx-worker:latest
       container_name: workx-worker
       environment:
               AI_SERVICE_BASE_URL: "${AI_SERVICE_BASE_URL:-http://host.docker.internal:8000}"

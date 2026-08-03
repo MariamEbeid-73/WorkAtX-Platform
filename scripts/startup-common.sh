@@ -96,13 +96,13 @@ run_startup() {
   echo ""
 
   # ── Step 1: stop existing stack ────────────────────────────────────────────
-  echo -e "${YELLOW}[1/4] Stopping any existing WorkX containers...${RESET}"
+  echo -e "${YELLOW}[1/5] Stopping any existing WorkX containers...${RESET}"
   "${COMPOSE_CMD[@]}" down --remove-orphans 2>/dev/null || true
   echo -e "${GREEN}      ✓ Stack cleared${RESET}"
   echo ""
 
   # ── Step 2: build backend image ──────────────────────────────────────────────
-  echo -e "${YELLOW}[2/4] Building Backend image (ASP.NET Core)...${RESET}"
+  echo -e "${YELLOW}[2/5] Building Backend image (ASP.NET Core)...${RESET}"
   BE_CACHE=()
   docker image inspect workx-be:latest >/dev/null 2>&1 && BE_CACHE=(--cache-from workx-be:latest)
   docker build "${BE_CACHE[@]}" -t workx-be:latest ./BE
@@ -110,15 +110,23 @@ run_startup() {
   echo ""
 
   # ── Step 3: build frontend image ─────────────────────────────────────────────
-  echo -e "${YELLOW}[3/4] Building Frontend image (React + nginx)...${RESET}"
+  echo -e "${YELLOW}[3/5] Building Frontend image (React + nginx)...${RESET}"
   FE_CACHE=()
   docker image inspect workx-fe:latest >/dev/null 2>&1 && FE_CACHE=(--cache-from workx-fe:latest)
   docker build "${FE_CACHE[@]}" -t workx-fe:latest ./FE
   echo -e "${GREEN}      ✓ Frontend image ready${RESET}"
   echo ""
 
-  # ── Step 4: launch the full stack ────────────────────────────────────────────
-  echo -e "${YELLOW}[4/4] Starting all services (BE + FE + SQL)...${RESET}"
+  # ── Step 4: build worker image ───────────────────────────────────────────────
+  echo -e "${YELLOW}[4/5] Building Worker image (Celery)...${RESET}"
+  WORKER_CACHE=()
+  docker image inspect workx-worker:latest >/dev/null 2>&1 && WORKER_CACHE=(--cache-from workx-worker:latest)
+  docker build "${WORKER_CACHE[@]}" -t workx-worker:latest ./Worker
+  echo -e "${GREEN}      ✓ Worker image ready${RESET}"
+  echo ""
+
+  # ── Step 5: launch the full stack ────────────────────────────────────────────
+  echo -e "${YELLOW}[5/5] Starting all services (BE + FE + SQL)...${RESET}"
   "${COMPOSE_CMD[@]}" up -d
   echo -e "${GREEN}      ✓ All containers running${RESET}"
   echo ""
