@@ -75,23 +75,65 @@ public class InternalAiController : ControllerBase
         });
     }
 
-    private bool IsAuthorized(HttpRequest request)
+    /// <summary>
+    /// GET /api/internal/ai/gap-analysis/{userId}
+    /// Returns the user's latest Gap Analysis result stored in UserGapAnalyses.
+    /// Used mid-processing by the AI Node (Step 7a).
+    /// </summary>
+    [HttpGet("gap-analysis/{userId:guid}")]
+    public async Task<IActionResult> GetGapAnalysis(Guid userId)
     {
-        var provided = request.Headers["X-Service-Token"].ToString();
-        if (string.IsNullOrEmpty(provided)) return false;
+        if (!IsAuthorized(Request))
+            throw new UnauthorizedAppException("Invalid or missing service token.");
 
-        // Constant-time compare — avoids leaking the token via timing.
-        var a = Encoding.UTF8.GetBytes(provided);
-        var b = Encoding.UTF8.GetBytes(_serviceToken);
-        return a.Length == b.Length
-            && CryptographicOperations.FixedTimeEquals(a, b);
+        var gapAnalysis = await _db.UserGapAnalyses
+            .AsNoTracking()
+            .FirstOrDefaultAsync(g => g.UserId == userId)
+            ?? throw new NotFoundException($"No gap analysis found for user {userId}.");
+
+        object? result = null;
+        if (!string.IsNullOrEmpty(gapAnalysis.ResultJson))
+            result = JsonSerializer.Deserialize<JsonElement>(gapAnalysis.ResultJson);
+
+        return Ok(new
+        {
+            userId,
+            gapAnalysis = result,
+            updatedAt = gapAnalysis.UpdatedAt
+        });
+    }
+
+    /// <summary>
+    /// GET /api/internal/ai/plan/{userId}
+    /// Returns the user's latest Study Plan result stored in UserStudyPlans.
+    /// Used mid-processing by the AI Node (Step 7a).
+    /// </summary>
+    [HttpGet("plan/{userId:guid}")]
+    public async Task<IActionResult> GetStudyPlan(Guid userId)
+    {
+        if (!IsAuthorized(Request))
+            throw new UnauthorizedAppException("Invalid or missing service token.");
+
+        var plan = await _db.UserStudyPlans
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.UserId == userId)
+            ?? throw new NotFoundException($"No study plan found for user {userId}.");
+
+        object? result = null;
+        if (!string.IsNullOrEmpty(plan.ResultJson))
+            result = JsonSerializer.Deserialize<JsonElement>(plan.ResultJson);
+
+        return Ok(new
+        {
+            userId,
+            studyPlan = result,
+            updatedAt = plan.UpdatedAt
+        });
     }
 
     /// <summary>
     /// GET /api/internal/ai/jobs/{jobId}
-    /// Full job + decoded payload. The worker receives only the jobId from
-    /// the queue, so this endpoint is its entry point for everything it needs
-    /// to start: userId, resumeFileId, s3Key, confirmed GH/LI URLs, message.
+    /// Full job + decoded payload.
     /// </summary>
     [HttpGet("jobs/{jobId:guid}")]
     public async Task<IActionResult> GetJob(Guid jobId)
@@ -115,8 +157,7 @@ public class InternalAiController : ControllerBase
 
     /// <summary>
     /// GET /api/internal/ai/resume/{resumeFileId}/download-url
-    /// Pre-signed GET URL so the worker can download the CV directly from
-    /// MinIO/S3. 404 if the resume file no longer exists.
+    /// Pre-signed GET URL so the worker can download the CV directly.
     /// </summary>
     [HttpGet("resume/{resumeFileId:guid}/download-url")]
     public async Task<IActionResult> GetResumeDownloadUrl(Guid resumeFileId)
@@ -136,9 +177,8 @@ public class InternalAiController : ControllerBase
 
     /// <summary>
     /// POST /api/internal/ai/jobs/{jobId}/status
-    /// Worker reports it started processing, and optionally escalates a chat
-    /// job to gap_analysis. Stage/Progress are owned by the Redis stream
-    /// consumer and are not modified here.
+    /// Worker reports it started processing. Flips Status "queued" -> "processing"
+    /// exactly once, at pickup; JobType is never changed here.
     /// </summary>
     [HttpPost("jobs/{jobId:guid}/status")]
     public async Task<IActionResult> ReportStatus(Guid jobId, [FromBody] AiStatusRequest request)
@@ -157,15 +197,6 @@ public class InternalAiController : ControllerBase
 
         job.Status = JobStatus.Processing;
 
-        if (!string.IsNullOrEmpty(request.JobType))
-        {
-            if (job.JobType != JobType.Chat)
-                throw new BadRequestException($"Only '{JobType.Chat}' jobs can be escalated; this one is '{job.JobType}'.");
-            if (request.JobType != JobType.GapAnalysis)
-                throw new BadRequestException($"Invalid escalation job type '{request.JobType}'.");
-            job.JobType = JobType.GapAnalysis;
-        }
-
         job.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync();
 
@@ -180,9 +211,10 @@ public class InternalAiController : ControllerBase
 
     /// <summary>
     /// POST /api/internal/ai/jobs/{jobId}/result
-    /// Worker's final write-back. The backend owns all writes and routes by
-    /// job type: analysis1 → UserAnalyses (parsed CV JSON), chat/gap_analysis
-    /// → Jobs.ResultJson. Rejects double-submits on terminal jobs.
+    /// Worker's final write-back. Routes by job type & response_type:
+    /// - analysis1 -> UserAnalyses
+    /// - gap_analysis / study_plan payloads -> UserGapAnalyses / UserStudyPlans
+    /// - all chat/gap_analysis results -> Jobs.ResultJson
     /// </summary>
     [HttpPost("jobs/{jobId:guid}/result")]
     public async Task<IActionResult> SubmitResult(Guid jobId, [FromBody] AiResultRequest request)
@@ -217,14 +249,72 @@ public class InternalAiController : ControllerBase
         }
         else
         {
-            // chat / gap_analysis → the result lives on the job itself.
+            // Always set result/error on the job
             job.ResultJson = request.Status == JobStatus.Completed ? request.ResultJson : null;
             job.Error = request.Status == JobStatus.Failed ? request.Error : null;
+
+            // If completed, check response_type inside resultJson to persist to UserGapAnalyses or UserStudyPlans
+            if (request.Status == JobStatus.Completed && !string.IsNullOrEmpty(request.ResultJson))
+            {
+                SaveUnifiedResultIfApplicable(job.UserId, request.ResultJson);
+            }
         }
 
         await _db.SaveChangesAsync();
 
         return Ok(new AiResultResponse(job.Id, job.Status));
+    }
+
+    private void SaveUnifiedResultIfApplicable(Guid userId, string resultJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(resultJson);
+            if (doc.RootElement.TryGetProperty("response_type", out var typeProp))
+            {
+                var responseType = typeProp.GetString();
+                if (responseType == "gap_analysis_result")
+                {
+                    var existing = _db.UserGapAnalyses.FirstOrDefault(g => g.UserId == userId);
+                    if (existing == null)
+                    {
+                        _db.UserGapAnalyses.Add(new UserGapAnalysis
+                        {
+                            UserId = userId,
+                            ResultJson = resultJson,
+                            UpdatedAt = DateTimeOffset.UtcNow
+                        });
+                    }
+                    else
+                    {
+                        existing.ResultJson = resultJson;
+                        existing.UpdatedAt = DateTimeOffset.UtcNow;
+                    }
+                }
+                else if (responseType == "study_plan_result")
+                {
+                    var existing = _db.UserStudyPlans.FirstOrDefault(s => s.UserId == userId);
+                    if (existing == null)
+                    {
+                        _db.UserStudyPlans.Add(new UserStudyPlan
+                        {
+                            UserId = userId,
+                            ResultJson = resultJson,
+                            UpdatedAt = DateTimeOffset.UtcNow
+                        });
+                    }
+                    else
+                    {
+                        existing.ResultJson = resultJson;
+                        existing.UpdatedAt = DateTimeOffset.UtcNow;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignore JSON parsing errors if payload structure differs
+        }
     }
 
     private void SaveAnalysis1Result(Job job, string resultJson)
@@ -251,16 +341,22 @@ public class InternalAiController : ControllerBase
         }
     }
 
+    private bool IsAuthorized(HttpRequest request)
+    {
+        var provided = request.Headers["X-Service-Token"].ToString();
+        if (string.IsNullOrEmpty(provided)) return false;
+
+        var a = Encoding.UTF8.GetBytes(provided);
+        var b = Encoding.UTF8.GetBytes(_serviceToken);
+        return a.Length == b.Length
+            && CryptographicOperations.FixedTimeEquals(a, b);
+    }
+
     private static object? DecodePayload(string? payloadJson)
         => string.IsNullOrWhiteSpace(payloadJson)
             ? null
             : JsonSerializer.Deserialize<JsonElement>(payloadJson);
 
-    /// <summary>
-    /// Re-reads resumeFileId from the analysis1 payload so the UserAnalysis
-    /// tracks which resume it was parsed from — keeps re-parse dedup working
-    /// after the worker completes.
-    /// </summary>
     private static Guid? PayloadResumeFileId(string? payloadJson)
     {
         if (string.IsNullOrWhiteSpace(payloadJson)) return null;

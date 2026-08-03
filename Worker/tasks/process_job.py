@@ -3,14 +3,12 @@ import requests
 from celery_app import app
 from app import backend_client
 from tasks.chat_job import handle_chat
-from tasks.gap_analysis_job import handle_gap_analysis
 from tasks.analysis1_job import handle_analysis_1
 from progress_publisher import publish_progress
 
 logger = logging.getLogger(__name__)
 
 JOB_TYPE_CHAT = "chat"
-JOB_TYPE_GAP_ANALYSIS = "gap_analysis"
 JOB_TYPE_ANALYSIS_1 = "analysis1"
 
 STATUS_PROCESSING = "processing"
@@ -45,8 +43,6 @@ def _process_job_impl(self, jobId: str = None, **kwargs):
 
         if job_type == JOB_TYPE_CHAT:
             return handle_chat(self, job_id, job_data)
-        elif job_type == JOB_TYPE_GAP_ANALYSIS:
-            return handle_gap_analysis(self, job_id, job_data)
         elif job_type == JOB_TYPE_ANALYSIS_1:
             return handle_analysis_1(self, job_id, job_data)
         else:
@@ -72,7 +68,6 @@ def _process_job_impl(self, jobId: str = None, **kwargs):
 
 
 def _handle_retry(task_obj, exc, job_id: str):
-    """Handles exponential backoff retries and dead-lettering."""
     retry_delay = 5 * (2 ** task_obj.request.retries)
     if task_obj.request.retries >= task_obj.max_retries:
         logger.error(f"[DEAD LETTER] [JobId={job_id}] Retries exhausted. Marking job failed: {exc}")
@@ -81,6 +76,8 @@ def _handle_retry(task_obj, exc, job_id: str):
     else:
         logger.warning(f"[Job Dispatcher] [JobId={job_id}] Retrying in {retry_delay}s due to transient error: {exc}")
         raise task_obj.retry(exc=exc, countdown=retry_delay)
+
+
 def _safe_submit_failed_status(job_id: str, error_msg: str):
     try:
         publish_progress(job_id=job_id, stage="failed", percent=100)

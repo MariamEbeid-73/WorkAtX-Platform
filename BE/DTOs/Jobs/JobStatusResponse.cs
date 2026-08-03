@@ -1,9 +1,11 @@
 namespace BE.DTOs.Jobs;
 
+
 /// <summary>
 /// Lightweight status view, polled frequently by the frontend.
-/// The JobType field is the escalation signal — the frontend switches to the
-/// live progress view when a "chat" job's JobType changes to "gap_analysis".
+/// JobType is fixed at creation and never changes. The frontend switches to
+/// the live progress view based on Status == "processing" and the presence
+/// of Stage/Progress, not on JobType.
 /// </summary>
 public record JobStatusResponse(
     Guid JobId,

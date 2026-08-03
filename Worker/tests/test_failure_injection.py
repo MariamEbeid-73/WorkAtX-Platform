@@ -29,13 +29,7 @@ class FakeRetry(Exception):
 
 
 class FakeTask:
-    """
-    Minimal stand-in for a bound Celery task instance (the `self` inside
-    @app.task(bind=True)). Lets us call _process_job_impl(fake_task, ...)
-    directly — executing the real task body with a controllable retry
-    counter, without needing a live broker/worker or Celery's real
-    sleep-based eager-mode retries.
-    """
+
     def __init__(self, retries=0, max_retries=3):
         self.request = FakeRequest(retries)
         self.max_retries = max_retries
@@ -48,15 +42,8 @@ class FakeTask:
 
 @pytest.fixture(autouse=True)
 def no_real_io(monkeypatch):
-    """
-    Every test gets: MOCK_AI disabled (so our requests.post mocks are
-    actually exercised instead of the built-in mock branch), and
-    publish_progress stubbed out everywhere it's imported, so nothing
-    here ever touches a real AI service or Redis instance.
-    """
     monkeypatch.setenv("MOCK_AI", "false")
-    with patch("tasks.chat_job.publish_progress"), \
-         patch("tasks.gap_analysis_job.publish_progress"):
+    with patch("tasks.process_job.publish_progress"):
         yield
 
 
@@ -143,25 +130,22 @@ def test_malformed_chat_response_is_not_saved_as_success():
         mock_submit_result.assert_not_called()
 
 
-def test_malformed_gap_analysis_result_is_not_saved():
-    job_id = "job-malformed-gap"
-    job_data = {"jobType": "gap_analysis", "payload": {"userId": "u1"}, "target_role": "Senior Dev"}
+def test_legacy_gap_analysis_job_type_fails_fast_not_silently():
 
-    fake_response = MagicMock()
-    fake_response.raise_for_status.return_value = None
-    fake_response.json.return_value = {"unexpected_field": True}  # missing required "summary"
+    job_id = "job-legacy-gap-type"
+    job_data = {"jobType": "gap_analysis", "payload": {"userId": "u1"}}
 
     with patch("tasks.process_job.backend_client.get_job_details", return_value=job_data), \
          patch("tasks.process_job.backend_client.update_job_status"), \
-         patch("tasks.process_job.backend_client.submit_job_result") as mock_submit_result, \
-         patch("tasks.gap_analysis_job.backend_client.get_user_context", return_value={}), \
-         patch("app.ai_client.requests.post", return_value=fake_response):
+         patch("tasks.process_job.backend_client.submit_job_result") as mock_submit_result:
 
         task = FakeTask(retries=0, max_retries=3)
-        with pytest.raises(FakeRetry):
-            process_job_impl(task, jobId=job_id)
+        result = process_job_impl(task, jobId=job_id)
 
-        mock_submit_result.assert_not_called()
+        assert result["status"] == "failed"
+        assert task.retry_calls == []  # unsupported job type is fatal, not transient
+        mock_submit_result.assert_called_once()
+        assert mock_submit_result.call_args.kwargs["status"] == "failed"
 
 
 # ---------------------------------------------------------------------------
@@ -169,19 +153,12 @@ def test_malformed_gap_analysis_result_is_not_saved():
 # ---------------------------------------------------------------------------
 
 def test_job_marked_processing_before_any_ai_call():
-    """
-    We can't literally kill the process in a unit test, but we CAN prove the
-    precondition crash-recovery depends on: the job is flipped to
-    "processing" in the backend BEFORE any AI call is attempted. Combined
-    with task_acks_late + task_reject_on_worker_lost (see celery_app.py),
-    a worker that dies right after this point gets its message redelivered
-    to another worker instead of the job vanishing.
-    """
+
     job_id = "job-crash"
     job_data = {"jobType": "chat", "payload": {"userId": "u1", "message": "hi"}}
     call_order = []
 
-    def fake_update_status(job_id, status, job_type=None):
+    def fake_update_status(job_id, status):
         call_order.append(("update_job_status", status))
 
     def fake_ai_post(*args, **kwargs):
@@ -201,45 +178,9 @@ def test_job_marked_processing_before_any_ai_call():
 
 
 def test_celery_configured_for_crash_recovery():
-    """
-    Guards against someone accidentally removing the acks_late /
-    reject_on_worker_lost settings that make in-flight job recovery
-    possible after a real worker process crash.
-    """
+   
     from celery_app import app as celery_app_instance
 
     assert celery_app_instance.conf.task_acks_late is True
     assert celery_app_instance.conf.task_reject_on_worker_lost is True
     assert celery_app_instance.conf.worker_prefetch_multiplier == 1
-
-
-# ---------------------------------------------------------------------------
-# Bonus: prove the new async gap-analysis polling path actually polls
-# real stages instead of firing them back-to-back with no work between them
-# ---------------------------------------------------------------------------
-
-def test_gap_analysis_polls_real_stages_when_ai_reports_async_job(monkeypatch):
-    from tasks.gap_analysis_job import handle_gap_analysis
-
-    monkeypatch.setenv("MOCK_AI", "true")
-    monkeypatch.setenv("MOCK_AI_ASYNC_GAP", "true")
-
-    job_id = "job-async-gap"
-    job_data = {"jobType": "gap_analysis", "payload": {"userId": "u1"}, "target_role": "Senior Dev"}
-
-    with patch("tasks.gap_analysis_job.backend_client.get_user_context", return_value={}), \
-         patch("tasks.gap_analysis_job.backend_client.submit_job_result") as mock_submit_result, \
-         patch("tasks.gap_analysis_job.publish_progress") as mock_publish, \
-         patch("time.sleep"):
-
-        result = handle_gap_analysis(task=FakeTask(), job_id=job_id, job_data=job_data)
-
-        assert result["status"] == "completed"
-        mock_submit_result.assert_called_once()
-
-        published_stages = [call.kwargs["stage"] for call in mock_publish.call_args_list]
-        # real per-stage events from polling — not two fake calls fired
-        # back-to-back right after a single synchronous call returns
-        assert "checking" in published_stages
-        assert "completed" in published_stages
-        assert len(published_stages) >= 3

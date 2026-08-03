@@ -7,22 +7,27 @@ using StackExchange.Redis;
 
 namespace BE.Services;
 
-public class GapAnalysisStreamConsumer : BackgroundService
+/// <summary>
+/// Generic job-progress Redis Stream consumer. Listens for progress events emitted
+/// by the AI Node across any processing job, updates the database state (Stage & Progress),
+/// and broadcasts the update via SignalR to connected clients.
+/// </summary>
+public class JobProgressStreamConsumer : BackgroundService
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly IHubContext<JobStatusHub> _hubContext;
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ILogger<GapAnalysisStreamConsumer> _logger;
+    private readonly ILogger<JobProgressStreamConsumer> _logger;
     private readonly string _streamName;
     private readonly string _consumerGroup;
     private readonly string _consumerName;
 
-    public GapAnalysisStreamConsumer(
+    public JobProgressStreamConsumer(
         IConnectionMultiplexer redis,
         IHubContext<JobStatusHub> hubContext,
         IServiceScopeFactory scopeFactory,
         IConfiguration configuration,
-        ILogger<GapAnalysisStreamConsumer> logger)
+        ILogger<JobProgressStreamConsumer> logger)
     {
         _redis = redis;
         _hubContext = hubContext;
@@ -35,15 +40,10 @@ public class GapAnalysisStreamConsumer : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogWarning("GapAnalysisStreamConsumer STARTING UP — stream={Stream} group={Group}", _streamName, _consumerGroup);
+        _logger.LogInformation("JobProgressStreamConsumer STARTING UP — stream={Stream} group={Group}", _streamName, _consumerGroup);
 
         var db = _redis.GetDatabase();
 
-        // Retry instead of letting a transient startup failure (e.g. Redis not
-        // reachable yet because the container came up before the redis service
-        // was ready) crash the entire host via an unhandled BackgroundService
-        // exception. This loop only covers group creation at startup — the
-        // main read loop below already has its own try/catch for ongoing use.
         var groupReady = false;
         while (!groupReady && !stoppingToken.IsCancellationRequested)
         {
@@ -80,8 +80,6 @@ public class GapAnalysisStreamConsumer : BackgroundService
                         await ProcessEntryAsync(db, entry, stoppingToken);
                 }
 
-                // Every ~30 seconds, separately check for anything left stuck in the PEL
-                // (from a crash, a dropped connection, etc.) and retry it.
                 if (DateTimeOffset.UtcNow - lastSweep > sweepInterval)
                 {
                     await ReclaimStuckEntriesAsync(db, stuckThreshold, stoppingToken);
@@ -96,18 +94,8 @@ public class GapAnalysisStreamConsumer : BackgroundService
         }
     }
 
-    /// <summary>
-    /// Checks the consumer group's Pending Entries List for messages that were
-    /// read by ANY consumer (including a now-dead one) but never acknowledged,
-    /// and have been sitting that way for longer than `stuckThreshold`. Re-claims
-    /// them under this consumer and runs them through the normal processing path.
-    /// </summary>
     private async Task ReclaimStuckEntriesAsync(IDatabase db, TimeSpan stuckThreshold, CancellationToken stoppingToken)
     {
-        // consumerName: RedisValue.Null → "show me pending entries from EVERY
-        // consumer in this group", not just this one. A stuck entry is usually
-        // stuck under a consumer instance that has already crashed/restarted,
-        // so filtering to "just mine" would miss the entries we actually care about.
         var pending = await db.StreamPendingMessagesAsync(
             _streamName, _consumerGroup, count: 50, consumerName: RedisValue.Null);
 
@@ -117,20 +105,17 @@ public class GapAnalysisStreamConsumer : BackgroundService
             .ToArray();
 
         if (stuckIds.Length == 0)
-            return; // nothing stuck — this is the normal case almost every sweep
+            return;
 
         _logger.LogWarning("Reclaiming {Count} stuck stream entries", stuckIds.Length);
 
-        // XCLAIM: "transfer ownership of these specific message IDs to ME, and
-        // reset their idle timer." Returns the actual message content so we can
-        // reprocess it immediately without a separate read.
         var claimed = await db.StreamClaimAsync(
             _streamName, _consumerGroup, _consumerName,
             minIdleTimeInMs: (long)stuckThreshold.TotalMilliseconds,
             messageIds: stuckIds);
 
         foreach (var entry in claimed)
-            await ProcessEntryAsync(db, entry, stoppingToken); // same method from Step 4 — no duplication
+            await ProcessEntryAsync(db, entry, stoppingToken);
     }
 
     private async Task EnsureConsumerGroupExistsAsync(IDatabase db)
@@ -167,13 +152,9 @@ public class GapAnalysisStreamConsumer : BackgroundService
 
             var job = await dbContext.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, stoppingToken);
 
-            if (job is null || job.JobType != JobType.GapAnalysis)
+            // WIDENED FILTER: Check if job exists and is currently processing (status-based, not type-based)
+            if (job is null || job.Status != JobStatus.Processing)
             {
-                // Not tracked here, or not (yet) escalated to gap_analysis — ignore defensively.
-                // Note: chat_job.py's escalation event ("escalated_to_gap_analysis", percent 0)
-                // fires right after the DB flip to gap_analysis, so by the time this event
-                // is read, job.JobType should already say gap_analysis. If it doesn't, the
-                // events arrived out of order — worth alerting on, not just skipping silently.
                 await db.StreamAcknowledgeAsync(_streamName, _consumerGroup, entry.Id);
                 return;
             }

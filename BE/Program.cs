@@ -22,7 +22,7 @@ builder.Services.AddSwaggerDocumentation();
 builder.Services.AddClerkAuthentication(builder.Configuration);
 builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddSignalR();
-builder.Services.AddHostedService<GapAnalysisStreamConsumer>();
+builder.Services.AddHostedService<JobProgressStreamConsumer>();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))

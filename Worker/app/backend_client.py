@@ -20,10 +20,8 @@ def get_resume_download_url(resume_file_id: str) -> str:
     response.raise_for_status()
     return response.json().get("url")
 
-def update_job_status(job_id: str, status: str, job_type: str = None) -> dict:
+def update_job_status(job_id: str, status: str) -> dict:
     payload = {"status": status}
-    if job_type:
-        payload["jobType"] = job_type  
     response = requests.post(f"{BACKEND_BASE_URL}/api/internal/ai/jobs/{job_id}/status", json=payload, headers=HEADERS)
     response.raise_for_status()
     return response.json()

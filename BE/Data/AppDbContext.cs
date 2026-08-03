@@ -14,7 +14,8 @@ public class AppDbContext : DbContext
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<UserAnalysis> UserAnalyses => Set<UserAnalysis>();
     public DbSet<ProfileScore> ProfileScores => Set<ProfileScore>();
-
+    public DbSet<UserGapAnalysis> UserGapAnalyses => Set<UserGapAnalysis>();
+    public DbSet<UserStudyPlan> UserStudyPlans => Set<UserStudyPlan>();
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -78,6 +79,25 @@ public class AppDbContext : DbContext
             entity.HasOne(p => p.User).WithOne()
                 .HasForeignKey<ProfileScore>(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
             entity.Property(p => p.BreakdownJson).HasColumnType("jsonb");
+            entity.Property(p => p.CreatedAt).HasDefaultValueSql("NOW()");
+            entity.Property(p => p.UpdatedAt).HasDefaultValueSql("NOW()");
+        });
+        modelBuilder.Entity<UserGapAnalysis>(entity =>
+        {
+            entity.ToTable("UserGapAnalyses");
+            entity.HasOne(a => a.User).WithOne()
+                .HasForeignKey<UserGapAnalysis>(a => a.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.Property(a => a.ResultJson).HasColumnType("jsonb");
+            entity.Property(a => a.CreatedAt).HasDefaultValueSql("NOW()");
+            entity.Property(a => a.UpdatedAt).HasDefaultValueSql("NOW()");
+        });
+
+        modelBuilder.Entity<UserStudyPlan>(entity =>
+        {
+            entity.ToTable("UserStudyPlans");
+            entity.HasOne(p => p.User).WithOne()
+                .HasForeignKey<UserStudyPlan>(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.Property(p => p.ResultJson).HasColumnType("jsonb");
             entity.Property(p => p.CreatedAt).HasDefaultValueSql("NOW()");
             entity.Property(p => p.UpdatedAt).HasDefaultValueSql("NOW()");
         });
