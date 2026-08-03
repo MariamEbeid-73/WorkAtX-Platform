@@ -129,7 +129,7 @@ public class InternalAiController : ControllerBase
             .FirstOrDefaultAsync(r => r.Id == resumeFileId)
             ?? throw new NotFoundException($"Resume {resumeFileId} not found.");
 
-        var url = await _fileStorage.GenerateDownloadUrlAsync(resume.S3Key);
+        var url = await _fileStorage.GenerateInternalDownloadUrlAsync(resume.S3Key);
 
         return Ok(new AiDownloadUrlResponse(url, DateTimeOffset.UtcNow.AddHours(1)));
     }

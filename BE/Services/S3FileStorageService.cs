@@ -81,6 +81,25 @@ public class S3FileStorageService : IFileStorageService, IDisposable
         return Task.FromResult(url);
     }
 
+    public Task<string> GenerateInternalDownloadUrlAsync(string s3Key, int expirySeconds = 3600)
+    {
+        var request = new GetPreSignedUrlRequest
+        {
+            BucketName = _bucketName,
+            Key        = s3Key,
+            Verb       = HttpVerb.GET,
+            Expires    = DateTime.UtcNow.AddSeconds(expirySeconds),
+        };
+
+        // Uses _s3Client which points to the internal Docker hostname (e.g. workx-minio).
+        // AWS SDK always generates https:// presigned URLs even with UseHttp=true,
+        // so we force http:// because MinIO in Docker runs plain HTTP.
+        var url = _s3Client.GetPreSignedURL(request);
+        if (url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            url = "http://" + url.Substring("https://".Length);
+        return Task.FromResult(url);
+    }
+
     public async Task DeleteFileAsync(string s3Key)
     {
         var request = new DeleteObjectRequest

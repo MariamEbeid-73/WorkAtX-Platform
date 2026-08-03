@@ -13,6 +13,7 @@
     "@ant-design/icons": "^6.3.2",
     "@clerk/react": "^6.12.2",
     "@clerk/themes": "^2.4.57",
+    "@microsoft/signalr": "^10.0.0",
     "antd": "^6.5.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

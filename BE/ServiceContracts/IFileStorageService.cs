@@ -14,6 +14,12 @@ public interface IFileStorageService
     Task<string> GenerateDownloadUrlAsync(string s3Key, int expirySeconds = 3600);
 
     /// <summary>
+    /// Returns a pre-signed GET URL using the internal Docker hostname.
+    /// Use this for service-to-service downloads (e.g., Worker → MinIO).
+    /// </summary>
+    Task<string> GenerateInternalDownloadUrlAsync(string s3Key, int expirySeconds = 3600);
+
+    /// <summary>
     /// Permanently deletes a file from the bucket.
     /// </summary>
     Task DeleteFileAsync(string s3Key);

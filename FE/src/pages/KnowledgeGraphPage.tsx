@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Flex, Typography, Tag } from 'antd';
+import { Flex, Typography, Tag, message } from 'antd';
 import {
   GithubOutlined,
   LinkedinOutlined,
@@ -13,7 +13,8 @@ import {
   CalendarOutlined,
   LinkOutlined,
 } from '@ant-design/icons';
-import { MOCK_ANALYSIS_RESULT } from '../data/analysisMockData';
+import { useAuth } from '@clerk/react';
+import * as signalR from '@microsoft/signalr';
 import type { AnalysisResult, ScoreMetric, ScoreDomain } from '../types/analysis';
 
 const { Title, Text } = Typography;
@@ -21,65 +22,92 @@ const { Title, Text } = Typography;
 // ─────────────────────────────────────────────────────────────────────────────
 // Loading State — Cinematic analysis screen
 // ─────────────────────────────────────────────────────────────────────────────
-const ANALYSIS_STEPS = [
-  { label: 'Fetching LinkedIn profile',   duration: 22 },
-  { label: 'Scanning GitHub repositories', duration: 20 },
-  { label: 'Parsing resume structure',     duration: 18 },
-  { label: 'Extracting skills & experience', duration: 16 },
-  { label: 'Calculating score breakdown',  duration: 14 },
-  { label: 'Building knowledge graph',     duration: 10 },
-];
 
-function AnalysisLoadingState({ onDone }: { onDone: () => void }) {
-  const [activeStep, setActiveStep]       = useState(0);
-  const [doneSteps,  setDoneSteps]        = useState<number[]>([]);
-  const [secondsLeft, setSecondsLeft]     = useState(120);
-  const [progress,   setProgress]         = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+function AnalysisLoadingState({ jobId, onDone, onError }: { jobId: string; onDone: (data: AnalysisResult) => void; onError: () => void }) {
+  const [stages, setStages] = useState<{ label: string; isDone: boolean; isActive: boolean }[]>([]);
+  const [progress, setProgress] = useState(0);
+  const { getToken } = useAuth();
+  const isMounted = useRef(true);
 
-  // Countdown
   useEffect(() => {
-    const t = setInterval(() => {
-      setSecondsLeft(s => {
-        if (s <= 1) { clearInterval(t); return 0; }
-        return s - 1;
-      });
-      setProgress(p => Math.min(p + 100 / 120, 100));
-    }, 1000);
-    timerRef.current = t;
-    return () => clearInterval(t);
-  }, []);
+    isMounted.current = true;
+    let connection: signalR.HubConnection | null = null;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
 
-  // Step ticker
-  useEffect(() => {
-    let stepIdx = 0;
-    const tick = () => {
-      if (stepIdx >= ANALYSIS_STEPS.length) return;
-      setActiveStep(stepIdx);
-      const delay = ANALYSIS_STEPS[stepIdx].duration * 1000;
-      setTimeout(() => {
-        setDoneSteps(d => [...d, stepIdx]);
-        stepIdx++;
-        if (stepIdx < ANALYSIS_STEPS.length) tick();
-      }, delay);
-    };
-    tick();
-  }, []);
+    const connectAndListen = async () => {
+      try {
+        const token = await getToken();
+        connection = new signalR.HubConnectionBuilder()
+          .withUrl('http://localhost:5000/hubs/job-status', {
+            accessTokenFactory: () => token || '',
+          })
+          .withAutomaticReconnect()
+          .build();
 
-  // For demo: expose a "skip" shortcut — pressing Space completes immediately
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === ' ' || e.key === 'Enter') {
-        if (timerRef.current) clearInterval(timerRef.current);
-        onDone();
+        await connection.start();
+        await connection.invoke("SubscribeToJob", jobId);
+
+        connection.on("job_status_update", (jobStatus) => {
+          if (!isMounted.current) return;
+          const { stage, progress: percent } = jobStatus;
+          if (percent != null) setProgress(percent);
+          
+          if (stage) {
+            setStages(prev => {
+              const next = prev.map(s => ({ ...s, isActive: false, isDone: true }));
+              if (!next.find(s => s.label === stage)) {
+                next.push({ label: stage, isActive: true, isDone: false });
+              } else {
+                const existing = next.find(s => s.label === stage)!;
+                existing.isActive = true;
+                existing.isDone = false;
+              }
+              return next;
+            });
+          }
+
+          if (stage === 'completed' || percent === 100) {
+            fetchResult();
+          }
+        });
+
+        // Fallback polling just to catch completed status if websocket misses it
+        pollInterval = setInterval(async () => {
+          const res = await fetch(`http://localhost:5000/api/jobs/${jobId}/status`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.status === 'completed') {
+            fetchResult();
+          } else if (data.status === 'failed') {
+            if (isMounted.current) onError();
+          }
+        }, 3000);
+
+      } catch (e) {
+        console.error(e);
+        if (isMounted.current) onError();
       }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onDone]);
 
-  const mins = Math.floor(secondsLeft / 60);
-  const secs = secondsLeft % 60;
+    const fetchResult = async () => {
+      if (pollInterval) clearInterval(pollInterval);
+      const token = await getToken();
+      const res = await fetch(`http://localhost:5000/api/jobs/${jobId}/result`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (isMounted.current) onDone(data.result);
+    };
+
+    connectAndListen();
+
+    return () => {
+      isMounted.current = false;
+      if (pollInterval) clearInterval(pollInterval);
+      if (connection) connection.stop();
+    };
+  }, [jobId]);
 
   return (
     <div style={{ minHeight: '70vh', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
@@ -103,7 +131,6 @@ function AnalysisLoadingState({ onDone }: { onDone: () => void }) {
 
         {/* Orb + spinner */}
         <div style={{ position: 'relative', width: 120, height: 120 }}>
-          {/* Outer spinning ring */}
           <div style={{
             position: 'absolute', inset: 0, borderRadius: '50%',
             border: '2px solid transparent',
@@ -111,7 +138,6 @@ function AnalysisLoadingState({ onDone }: { onDone: () => void }) {
             borderRightColor: 'rgba(139,92,246,0.3)',
             animation: 'spin 1.4s linear infinite',
           }} />
-          {/* Inner spinning ring (reverse) */}
           <div style={{
             position: 'absolute', inset: 8, borderRadius: '50%',
             border: '2px solid transparent',
@@ -119,7 +145,6 @@ function AnalysisLoadingState({ onDone }: { onDone: () => void }) {
             borderLeftColor: 'rgba(6,182,212,0.3)',
             animation: 'spin 2s linear infinite reverse',
           }} />
-          {/* Core orb */}
           <div style={{
             position: 'absolute', inset: 16, borderRadius: '50%',
             background: 'linear-gradient(135deg, rgba(139,92,246,0.25), rgba(6,182,212,0.18))',
@@ -150,20 +175,25 @@ function AnalysisLoadingState({ onDone }: { onDone: () => void }) {
         </Flex>
 
         {/* Step list */}
-        <div style={{ width: '100%' }}>
-          {ANALYSIS_STEPS.map((step, i) => {
-            const isDone   = doneSteps.includes(i);
-            const isActive = activeStep === i && !isDone;
+        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {stages.length === 0 && (
+            <div style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 14 }}>
+              Connecting to AI service...
+            </div>
+          )}
+          {stages.map((step) => {
+            const isDone = step.isDone;
+            const isActive = step.isActive;
             return (
               <div
                 key={step.label}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 14,
-                  padding: '12px 16px', marginBottom: 8, borderRadius: 12,
+                  padding: '12px 16px', borderRadius: 12,
                   background: isActive ? 'rgba(139,92,246,0.08)' : isDone ? 'rgba(16,185,129,0.05)' : 'rgba(255,255,255,0.02)',
                   border: `1px solid ${isActive ? 'rgba(139,92,246,0.25)' : isDone ? 'rgba(16,185,129,0.20)' : 'rgba(255,255,255,0.05)'}`,
                   transition: 'all 0.4s ease',
-                  opacity: i > activeStep && !isDone ? 0.35 : 1,
+                  opacity: !isActive && !isDone ? 0.35 : 1,
                 }}
               >
                 {/* Status dot */}
@@ -206,8 +236,8 @@ function AnalysisLoadingState({ onDone }: { onDone: () => void }) {
           })}
         </div>
 
-        {/* Progress bar + timer */}
-        <Flex vertical gap={10} style={{ width: '100%' }}>
+        {/* Progress bar */}
+        <Flex vertical gap={10} style={{ width: '100%', marginTop: 12 }}>
           <div style={{
             width: '100%', height: 4, borderRadius: 99,
             background: 'rgba(255,255,255,0.06)', overflow: 'hidden',
@@ -224,15 +254,8 @@ function AnalysisLoadingState({ onDone }: { onDone: () => void }) {
             <Text style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
               {Math.round(progress)}% complete
             </Text>
-            <Text style={{ fontSize: 12, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
-              ~{mins}:{String(secs).padStart(2, '0')} remaining
-            </Text>
           </Flex>
         </Flex>
-
-        <Text style={{ fontSize: 12, color: 'var(--text-tertiary)', textAlign: 'center' }}>
-          Press <kbd style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, padding: '1px 6px', fontFamily: 'var(--font-mono)', fontSize: 11 }}>Space</kbd> or <kbd style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, padding: '1px 6px', fontFamily: 'var(--font-mono)', fontSize: 11 }}>Enter</kbd> to preview result instantly
-        </Text>
       </Flex>
     </div>
   );
@@ -886,17 +909,45 @@ function AnalysisResultState({ data }: { data: AnalysisResult }) {
 export function KnowledgeGraphPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [pageState, setPageState] = useState<'idle' | 'loading' | 'result'>('idle');
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [resultData, setResultData] = useState<AnalysisResult | null>(null);
+  const { getToken } = useAuth();
 
-  // Auto-trigger if ?analyze=true
+  const triggerAnalysis = async () => {
+    setPageState('loading');
+    setResultData(null);
+    try {
+      const token = await getToken();
+      const res = await fetch('http://localhost:5000/api/analysis1/start', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to start analysis');
+      const data = await res.json();
+      setJobId(data.jobId);
+    } catch (e) {
+      console.error(e);
+      message.error("Failed to start analysis. Check if you uploaded a CV.");
+      setPageState('idle');
+    }
+  };
+
   useEffect(() => {
     if (searchParams.get('analyze') === 'true') {
-      setPageState('loading');
-      // Remove query param so refresh doesn't re-trigger
+      triggerAnalysis();
       setSearchParams({}, { replace: true });
     }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleLoadingDone = () => setPageState('result');
+  const handleLoadingDone = (data: AnalysisResult) => {
+    setResultData(data);
+    setPageState('result');
+  };
+
+  const handleError = () => {
+    message.error("Analysis failed.");
+    setPageState('idle');
+  };
 
   return (
     <div style={{ animation: 'fadeIn 0.5s ease both' }}>
@@ -924,7 +975,7 @@ export function KnowledgeGraphPage() {
           {/* Dev helper: toggle between states */}
           {pageState === 'idle' && (
             <button
-              onClick={() => setPageState('loading')}
+              onClick={triggerAnalysis}
               style={{
                 padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer',
                 background: 'linear-gradient(135deg, rgba(139,92,246,0.20), rgba(6,182,212,0.12))',
@@ -936,20 +987,18 @@ export function KnowledgeGraphPage() {
             </button>
           )}
           {pageState === 'loading' && (
-            <button
-              onClick={handleLoadingDone}
+            <div
               style={{
-                padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600,
                 background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)', color: 'var(--text-tertiary)',
-                transition: 'all 0.2s ease',
               }}
             >
-              Skip →
-            </button>
+              Processing...
+            </div>
           )}
           {pageState === 'result' && (
             <button
-              onClick={() => setPageState('loading')}
+              onClick={triggerAnalysis}
               style={{
                 padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer',
                 background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)', color: 'var(--text-tertiary)',
@@ -973,18 +1022,18 @@ export function KnowledgeGraphPage() {
           <Flex vertical align="center" gap={8} style={{ textAlign: 'center', maxWidth: 380, padding: '0 24px' }}>
             <Title level={4} style={{ margin: 0, color: 'var(--text-primary)' }}>No analysis yet</Title>
             <Text style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
-              Click <strong style={{ color: 'var(--text-primary)' }}>Run Analysis</strong> to start a deep AI analysis of your profile. It takes about 2 minutes.
+              Click <strong style={{ color: 'var(--text-primary)' }}>Run Analysis</strong> to start a deep AI analysis of your profile.
             </Text>
           </Flex>
         </Flex>
       )}
 
-      {pageState === 'loading' && (
-        <AnalysisLoadingState onDone={handleLoadingDone} />
+      {pageState === 'loading' && jobId && (
+        <AnalysisLoadingState jobId={jobId} onDone={handleLoadingDone} onError={handleError} />
       )}
 
-      {pageState === 'result' && (
-        <AnalysisResultState data={MOCK_ANALYSIS_RESULT} />
+      {pageState === 'result' && resultData && (
+        <AnalysisResultState data={resultData} />
       )}
     </div>
   );

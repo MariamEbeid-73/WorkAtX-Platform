@@ -167,7 +167,7 @@ public class GapAnalysisStreamConsumer : BackgroundService
 
             var job = await dbContext.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, stoppingToken);
 
-            if (job is null || job.JobType != JobType.GapAnalysis)
+            if (job is null || (job.JobType != JobType.GapAnalysis && job.JobType != JobType.Analysis1))
             {
                 // Not tracked here, or not (yet) escalated to gap_analysis — ignore defensively.
                 // Note: chat_job.py's escalation event ("escalated_to_gap_analysis", percent 0)
