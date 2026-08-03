@@ -8,9 +8,9 @@ using Microsoft.AspNetCore.Mvc;
 namespace BE.Controllers;
 
 /// <summary>
-/// Generic job status/result endpoints — identical shape for chat, gap
-/// analysis, and Analysis 1 jobs; only the content differs. Both endpoints
-/// verify the requesting user owns the job before returning anything.
+/// Generic job status/result endpoints — identical shape for chat and
+/// Analysis 1 jobs; only the content differs. Both endpoints verify the
+/// requesting user owns the job before returning anything.
 /// </summary>
 [Authorize]
 [ApiController]
@@ -35,7 +35,9 @@ public class JobController : ControllerBase
     /// GET /api/jobs/{jobId}/status
     /// Lightweight poll target. The frontend polls this every second or two;
     /// when it sees Status == "completed" it fetches /result and stops.
-    /// When JobType becomes "gap_analysis" it switches to the live view.
+    /// Stage/Progress are populated for any job that's "processing" — the
+    /// frontend can switch to a live progress view for any job, not just a
+    /// specific job type.
     /// </summary>
     [HttpGet("{jobId:guid}/status")]
     public async Task<ActionResult<JobStatusResponse>> GetStatus(Guid jobId)

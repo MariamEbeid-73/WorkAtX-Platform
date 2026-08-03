@@ -335,6 +335,54 @@ namespace BE.Migrations
                     b.ToTable("UserAnalyses", (string)null);
                 });
 
+            modelBuilder.Entity("BE.Models.UserGapAnalysis", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("ResultJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("UserGapAnalyses", (string)null);
+                });
+
+            modelBuilder.Entity("BE.Models.UserStudyPlan", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("ResultJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("UserStudyPlans", (string)null);
+                });
+
             modelBuilder.Entity("BE.Models.Job", b =>
                 {
                     b.HasOne("BE.Models.User", "User")
@@ -393,6 +441,28 @@ namespace BE.Migrations
                         .IsRequired();
 
                     b.Navigation("ResumeFile");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("BE.Models.UserGapAnalysis", b =>
+                {
+                    b.HasOne("BE.Models.User", "User")
+                        .WithOne()
+                        .HasForeignKey("BE.Models.UserGapAnalysis", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("BE.Models.UserStudyPlan", b =>
+                {
+                    b.HasOne("BE.Models.User", "User")
+                        .WithOne()
+                        .HasForeignKey("BE.Models.UserStudyPlan", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("User");
                 });

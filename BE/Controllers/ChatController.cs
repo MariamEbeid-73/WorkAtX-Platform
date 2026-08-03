@@ -33,9 +33,10 @@ namespace BE.Controllers
 
         /// <summary>
         /// Sends a chat message. This returns immediately with a jobId — the
-        /// reply arrives later via the job status/result endpoints. The worker
-        /// decides whether the message is small talk (plain reply) or a career
-        /// goal that escalates into a full Gap Analysis.
+        /// reply arrives later via the job status/result endpoints. Every
+        /// message becomes the same "chat" job type and goes through the same
+        /// single AI process call; the AI Node itself decides whether the
+        /// result is a plain reply, a gap analysis, or a study plan.
         /// </summary>
         [HttpPost("message")]
         public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest request)

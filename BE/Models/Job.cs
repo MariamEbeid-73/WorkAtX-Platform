@@ -4,9 +4,14 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace BE.Models;
 
 /// <summary>
-/// JobType values. Stored as a plain string (not a DB enum) because the
-/// value is MUTABLE at runtime — a job created as "chat" is flipped to
-/// "gap_analysis" by the worker once it detects escalation.
+/// JobType values. Stored as a plain string (not a DB enum). Under the
+/// unified chat pipeline, every chat message creates a "chat" job and
+/// JobType is fixed for the lifetime of the job — nothing flips it after
+/// creation. The AI Node itself decides whether the result is a plain
+/// reply, a gap analysis, or a study plan (see ResultJson's response_type).
+/// GapAnalysis is kept only as a historical value for old rows created
+/// before the unification; new jobs never use it. Analysis1 remains a
+/// distinct, unrelated job type for CV parsing.
 /// </summary>
 public static class JobType
 {
@@ -36,9 +41,9 @@ public class Job
     public User User { get; set; } = null!;
 
     /// <summary>
-    /// "chat", "gap_analysis", or "analysis1". Mutable — the worker upgrades
-    /// a "chat" job to "gap_analysis" mid-flight. The frontend reads this
-    /// field to decide whether to switch to the live progress view.
+    /// "chat" or "analysis1". Fixed at creation — never changes afterward.
+    /// The frontend reads Job.Stage/Progress and ResultJson.response_type
+    /// to decide how to render the outcome, not JobType.
     /// </summary>
     [Required]
     [MaxLength(32)]
