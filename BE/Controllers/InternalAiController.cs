@@ -244,21 +244,18 @@ public class InternalAiController : ControllerBase
         {
             if (request.Status == JobStatus.Completed)
                 SaveAnalysis1Result(job, request.ResultJson!);
-            else
-                job.Error = request.Error;
         }
         else
         {
-            // Always set result/error on the job
-            job.ResultJson = request.Status == JobStatus.Completed ? request.ResultJson : null;
-            job.Error = request.Status == JobStatus.Failed ? request.Error : null;
-
             // If completed, check response_type inside resultJson to persist to UserGapAnalyses or UserStudyPlans
             if (request.Status == JobStatus.Completed && !string.IsNullOrEmpty(request.ResultJson))
             {
                 SaveUnifiedResultIfApplicable(job.UserId, request.ResultJson);
             }
         }
+
+        job.ResultJson = request.Status == JobStatus.Completed ? request.ResultJson : null;
+        job.Error = request.Status == JobStatus.Failed ? request.Error : null;
 
         await _db.SaveChangesAsync();
 

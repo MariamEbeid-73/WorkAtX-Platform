@@ -24,9 +24,10 @@ def handle_analysis_1(task, job_id: str, job_data: dict):
     cv_res.raise_for_status()
     cv_bytes = cv_res.content
 
+    publish_progress(job_id=job_id, stage="Scanning GitHub & LinkedIn", percent=25)
     formatted_linkedin = ai_client.format_linkedin_url(linkedin_url)
 
-    publish_progress(job_id=job_id, stage="Analyzing profile with AI", percent=40)
+    publish_progress(job_id=job_id, stage="Analyzing profile with AI", percent=50)
     parsed_profile = ai_client.call_analysis_1_api(
         cv_bytes=cv_bytes,
         github_url=github_url,
@@ -37,6 +38,8 @@ def handle_analysis_1(task, job_id: str, job_data: dict):
     if not isinstance(parsed_profile, dict) or not parsed_profile:
         raise MalformedAIResponseError(f"CV parse response was not a usable JSON object: {parsed_profile!r}")
 
+    publish_progress(job_id=job_id, stage="Calculating score breakdown", percent=75)
+
     scores = parsed_profile.get("scoreBreakdown")
     if user_id and scores:
         try:
@@ -45,8 +48,11 @@ def handle_analysis_1(task, job_id: str, job_data: dict):
             logger.warning(f"[Analysis 1 Handler] [JobId={job_id}] Could not submit profile scores: {e}")
 
     publish_progress(job_id=job_id, stage="Finalizing results", percent=90)
-    profile_only = parsed_profile.get("profileAnalysis", parsed_profile)  # fallback for mock shape
-    result_json = json.dumps(profile_only)
+    if "profileAnalysis" in parsed_profile:
+        result_payload = parsed_profile
+    else:
+        result_payload = {"profileAnalysis": parsed_profile}
+    result_json = json.dumps(result_payload)
     backend_client.submit_job_result(job_id=job_id, status="completed", result_json=result_json)
 
     publish_progress(job_id=job_id, stage="completed", percent=100)
