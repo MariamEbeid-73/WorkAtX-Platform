@@ -4,11 +4,12 @@ using System.Text.Json;
 using BE.Common.Exceptions;
 using BE.Data;
 using BE.DTOs.Ai;
+using BE.Hubs;
 using BE.Models;
 using BE.ServiceContracts;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace BE.Controllers;
 
@@ -27,19 +28,19 @@ public class InternalAiController : ControllerBase
     private readonly IFileStorageService _fileStorage;
     private readonly string _serviceToken;
     private readonly ISummarizationService _summarizationService;
-    private readonly IBackgroundTaskQueue _backgroundTaskQueue;
+    private readonly IHubContext<JobStatusHub> _hubContext;
 
     public InternalAiController(
         AppDbContext db,
         IFileStorageService fileStorage,
         IConfiguration config,
         ISummarizationService summarizationService,
-        IBackgroundTaskQueue backgroundTaskQueue)
+        IHubContext<JobStatusHub> hubContext)
     {
         _db = db;
         _fileStorage = fileStorage;
         _summarizationService = summarizationService;
-        _backgroundTaskQueue = backgroundTaskQueue;
+        _hubContext = hubContext;
         _serviceToken = config["ServiceAuth:Token"]
             ?? throw new InvalidOperationException("ServiceAuth:Token is not configured.");
     }
@@ -210,6 +211,11 @@ public class InternalAiController : ControllerBase
         job.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync();
 
+        // Push the queued -> processing transition immediately so a client
+        // that's connected before the AI Node even picks up the job sees it
+        // live, not just on its next poll.
+        await BroadcastJobUpdateAsync(job);
+
         return Ok(new AiJobResponse(
             job.Id,
             job.JobType,
@@ -264,6 +270,13 @@ public class InternalAiController : ControllerBase
         job.Error = request.Status == JobStatus.Failed ? request.Error : null;
 
         await _db.SaveChangesAsync();
+
+        // Final push: this is the ONLY place completion is signaled over the
+        // socket — the Redis progress stream is explicitly progress-only
+        // (see REDIS_STREAM_CONTRACT_ADDENDUM.md §4). A client that stayed
+        // connected for the progress ticks gets the finished state here too,
+        // with no need to fall back to polling /api/jobs/{id}/status.
+        await BroadcastJobUpdateAsync(job);
 
         return Ok(new AiResultResponse(job.Id, job.Status));
     }
@@ -324,56 +337,39 @@ public class InternalAiController : ControllerBase
             ResponseType = responseType,
             JobId = job.Id,
         };
-
         _db.ChatMessages.Add(assistantMessage);
 
         var session = await _db.ChatSessions.FirstOrDefaultAsync(s => s.Id == job.SessionId!.Value);
-
         if (session != null)
         {
             session.LastMessageAt = DateTimeOffset.UtcNow;
-        }
 
-        // Pull the exact user turn that triggered THIS job (tagged with
-        // JobId at send time — see ChatController.SendMessage).
-        var userTurn = await _db.ChatMessages
-            .Where(m => m.JobId == job.Id && m.Role == ChatMessageRole.User)
-            .Select(m => m.Content)
-            .FirstOrDefaultAsync() ?? "";
+            // Pull the last user message for this job to feed the summarizer
+            var userTurn = await _db.ChatMessages
+                .Where(m => m.SessionId == session.Id && m.Role == ChatMessageRole.User)
+                .OrderByDescending(m => m.CreatedAt)
+                .Select(m => m.Content)
+                .FirstOrDefaultAsync() ?? "";
 
-        // Summary refresh is fire-and-forget from here: enqueue it and
-        // return. This keeps a slow/unavailable summarization provider from
-        // adding latency to job completion (which the worker is
-        // synchronously blocked on).
-        if (session != null)
+            var newTurns = new List<ChatTurn>
         {
-            var sessionId = session.Id;
-            _backgroundTaskQueue.QueueBackgroundWorkItem(async (services, ct) =>
+            new(ChatMessageRole.User, userTurn),
+            new(ChatMessageRole.Assistant, displayContent),
+        };
+
+            // Best-effort — never blocks or fails the job on summarizer errors
+            // (ExternalAiSummarizationService already swallows its own exceptions;
+            // this catch covers the extractive path or any future provider).
+            try
             {
-                var db = services.GetRequiredService<AppDbContext>();
-                var summarizer = services.GetRequiredService<ISummarizationService>();
-
-                var s = await db.ChatSessions.FirstOrDefaultAsync(x => x.Id == sessionId, ct);
-                if (s is null) return;
-
-                var newTurns = new List<ChatTurn>
-                {
-                    new(ChatMessageRole.User, userTurn),
-                    new(ChatMessageRole.Assistant, displayContent),
-                };
-
-                try
-                {
-                    var updatedSummary = await summarizer.SummarizeAsync(s.SummaryText, newTurns, ct);
-                    s.SummaryText = updatedSummary;
-                    s.SummaryUpdatedAt = DateTimeOffset.UtcNow;
-                    await db.SaveChangesAsync(ct);
-                }
-                catch
-                {
-                    // Best-effort — leave the previous summary in place.
-                }
-            });
+                var updatedSummary = await _summarizationService.SummarizeAsync(session.SummaryText, newTurns);
+                session.SummaryText = updatedSummary;
+                session.SummaryUpdatedAt = DateTimeOffset.UtcNow;
+            }
+            catch
+            {
+                // keep the previous summary; don't fail result submission over this
+            }
         }
     }
 
@@ -452,6 +448,25 @@ public class InternalAiController : ControllerBase
             analysis.UpdatedAt = DateTimeOffset.UtcNow;
         }
     }
+
+    /// <summary>
+    /// Single point of truth for the "job_status_update" SignalR event shape.
+    /// Used here for the processing/completed/failed transitions, and mirrored
+    /// by JobProgressStreamConsumer for in-flight progress ticks — same event
+    /// name, same field set, so the frontend needs exactly one handler.
+    /// </summary>
+    private Task BroadcastJobUpdateAsync(Job job) =>
+        _hubContext.Clients.Group(JobStatusHub.GroupName(job.Id)).SendAsync(
+            "job_status_update",
+            new
+            {
+                jobId = job.Id,
+                status = job.Status,
+                stage = job.Stage,
+                progress = job.Progress,
+                error = job.Error,
+                timestamp = DateTimeOffset.UtcNow,
+            });
 
     private bool IsAuthorized(HttpRequest request)
     {
