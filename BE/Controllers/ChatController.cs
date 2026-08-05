@@ -16,39 +16,36 @@ namespace BE.Controllers
         private readonly IUsageService _usageService;
         private readonly IJobService _jobService;
         private readonly IJobQueueService _jobQueueService;
+        private readonly IChatSessionService _sessionService;
+        private readonly BE.Data.AppDbContext _db;
 
         public ChatController(
             ICurrentUserService currentUserService,
             IUserService userService,
             IUsageService usageService,
             IJobService jobService,
-            IJobQueueService jobQueueService)
+            IJobQueueService jobQueueService,
+            IChatSessionService sessionService,
+            BE.Data.AppDbContext db)
         {
             _currentUserService = currentUserService;
             _userService = userService;
             _usageService = usageService;
             _jobService = jobService;
             _jobQueueService = jobQueueService;
+            _sessionService = sessionService;
+            _db = db;
         }
 
-        /// <summary>
-        /// Sends a chat message. This returns immediately with a jobId — the
-        /// reply arrives later via the job status/result endpoints. Every
-        /// message becomes the same "chat" job type and goes through the same
-        /// single AI process call; the AI Node itself decides whether the
-        /// result is a plain reply, a gap analysis, or a study plan.
-        /// </summary>
         [HttpPost("message")]
         public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest request)
         {
-            // 1. Validate before doing anything else
             if (string.IsNullOrWhiteSpace(request.Content))
                 return BadRequest(new { message = "Message content is required." });
 
             var user = await _userService.GetOrCreateUserAsync(_currentUserService.GetClerkUserId(), _currentUserService.GetEmail());
             var plan = _currentUserService.GetPlan();
 
-            // 2. Keep the existing free-tier usage gate
             if (!PlanTier.AtLeast(plan, "pro"))
             {
                 var (allowed, retryAfter, remaining) = await _usageService.TryConsumeMessageAsync(user.Id);
@@ -63,19 +60,39 @@ namespace BE.Controllers
                 Response.Headers["X-Messages-Remaining"] = remaining.ToString();
             }
 
-            // 3. Create the tracked job with the raw payload attached
+            // 1. Resolve or create the session
+            var session = await _sessionService.GetOrCreateForMessageAsync(user.Id, request.SessionId, request.Content);
+
+            // 2. Persist the user's message immediately — durable transcript
+            //    regardless of what happens to the job afterward.
+            _db.ChatMessages.Add(new ChatMessage
+            {
+                SessionId = session.Id,
+                UserId = user.Id,
+                Role = ChatMessageRole.User,
+                Content = request.Content,
+            });
+            session.LastMessageAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync();
+
+            // 3. RETRIEVE the existing session summary (generation happens after
+            //    the AI replies — see InternalAiController.SubmitResult).
+            var contextSummary = session.SummaryText;
+
+            // 4. Create the job with the expanded payload
             var job = await _jobService.CreateAsync(user.Id, JobType.Chat, new
             {
                 userId = user.Id,
+                sessionId = session.Id,
                 message = request.Content,
-            });
+                contextSummary,
+            }, session.Id);
 
-            // 4. Push it onto the queue for the Celery worker — don't wait on any AI response
             await _jobQueueService.PublishAsync(job.Id);
 
-            return Ok(new { jobId = job.Id });
+            return Ok(new { jobId = job.Id, sessionId = session.Id });
         }
     }
 
-    public record SendMessageRequest(string Content);
+    public record SendMessageRequest(string Content, Guid? SessionId);
 }

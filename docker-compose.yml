@@ -78,6 +78,10 @@ services:
       Redis__CeleryTask: "${CELERY_TASK:-worker.tasks.process_job}"
       Redis__CeleryQueue: "${CELERY_QUEUE:-celery}"
       ServiceAuth__Token: "${SERVICE_AUTH_TOKEN:-dev-service-token}"
+      Summarization__Provider: "${SUMMARIZATION_PROVIDER:-extractive}"
+      Summarization__ApiUrl: "${SUMMARIZATION_API_URL:-}"
+      Summarization__ApiKey: "${SUMMARIZATION_API_KEY:-}"
+      Summarization__Model: "${SUMMARIZATION_MODEL:-gpt-4o-mini}"
     ports:
       - "5000:5000"
     depends_on:

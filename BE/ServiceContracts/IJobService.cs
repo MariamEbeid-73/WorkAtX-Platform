@@ -9,8 +9,7 @@ public interface IJobService
     /// call <see cref="IJobQueueService.PublishAsync"/> separately so the
     /// record always exists before the worker can pick the message up.
     /// </summary>
-    Task<Job> CreateAsync(Guid userId, string jobType, object? payload);
-
+    Task<Job> CreateAsync(Guid userId, string jobType, object? payload, Guid? sessionId = null);
     /// <summary>
     /// Fetches a job, enforcing ownership: returns null if the job exists
     /// but belongs to a different user.

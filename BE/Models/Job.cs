@@ -37,6 +37,9 @@ public class Job
     [Required]
     public Guid UserId { get; set; }
 
+    public Guid? SessionId { get; set; }
+    [ForeignKey(nameof(SessionId))] public ChatSession? Session { get; set; }
+
     [ForeignKey(nameof(UserId))]
     public User User { get; set; } = null!;
 

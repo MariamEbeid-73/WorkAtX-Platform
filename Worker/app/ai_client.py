@@ -29,16 +29,20 @@ def _emit_mock_gap_analysis_progress(job_id: str):
         publish_progress(job_id=job_id, stage=stage, percent=percent)
 
 
-def call_process_api(user_id: str, job_id: str, message: str, timeout: int = 90) -> dict:
+def call_process_api(
+    user_id: str,
+    job_id: str,
+    session_id: str = None,
+    message: str = None,
+    context_summary: str = None,
+    timeout: int = 90,
+) -> dict:
     if _mock_ai_enabled():
-        logger.info(f"[AI Client - MOCK] Simulating process API response for user={user_id}, job={job_id}")
-        
-        if "gap" in message.lower() or "plan" in message.lower() or "senior" in message.lower():
-            if _mock_ai_async_gap_enabled():
-                _emit_mock_gap_analysis_progress(job_id)
+        logger.info(f"[AI Client - MOCK] Simulating process API response for user={user_id}, job={job_id}, session={session_id}")
 
+        if "gap" in message.lower() or "senior" in message.lower():
             return {
-                "response_type": "gap_analysis_result",
+                "responseType": "gap_analysis",
                 "summary": "Mock Gap Analysis Complete",
                 "missing_skills": [
                     {"name": "System Architecture", "importance": "High"},
@@ -49,9 +53,16 @@ def call_process_api(user_id: str, job_id: str, message: str, timeout: int = 90)
                     "Learn Clean Architecture and Repository Patterns"
                 ]
             }
-        
+
+        if "plan" in message.lower():
+            return {
+                "responseType": "study_plan",
+                "summary": "Mock 30-day study plan ready",
+                "weeks": [{"week": 1, "focus": "Fundamentals"}]
+            }
+
         return {
-            "response_type": "general_message",
+            "responseType": "normal_text",
             "reply": "Here is a quick chat response about your career progression."
         }
 
@@ -59,10 +70,12 @@ def call_process_api(user_id: str, job_id: str, message: str, timeout: int = 90)
     payload = {
         "user_id": user_id,
         "job_id": job_id,
-        "message": message
+        "session_id": session_id,
+        "message": message,
+        "context_summary": context_summary,
     }
 
-    logger.info(f"[AI Client] Calling Unified Process API at {url} for job_id={job_id}")
+    logger.info(f"[AI Client] Calling Unified Process API at {url} for job_id={job_id}, session_id={session_id}")
     response = requests.post(url, json=payload, timeout=timeout)
     response.raise_for_status()
     return response.json()
