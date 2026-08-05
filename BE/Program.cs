@@ -6,7 +6,14 @@ using BE.Common.Middleware;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
-
+var flatServiceAuthToken = Environment.GetEnvironmentVariable("SERVICE_AUTH_TOKEN");
+if (!string.IsNullOrEmpty(flatServiceAuthToken))
+{
+    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        { "ServiceAuth:Token", flatServiceAuthToken }
+    });
+}
 builder.Services.AddControllers().AddJsonOptions(options =>
     {
         // camelCase: C# "DisplayName" → JSON "displayName"
