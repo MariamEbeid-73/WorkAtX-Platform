@@ -101,6 +101,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IJobService, JobService>();
         services.AddScoped<IJobQueueService, JobQueueService>();
         services.AddScoped<IChatSessionService, ChatSessionService>();
+        services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
+
 
         var summarizationProvider = configuration["Summarization:Provider"] ?? "extractive";
         if (summarizationProvider.Equals("external", StringComparison.OrdinalIgnoreCase))

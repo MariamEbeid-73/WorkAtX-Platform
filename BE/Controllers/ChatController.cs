@@ -63,23 +63,11 @@ namespace BE.Controllers
             // 1. Resolve or create the session
             var session = await _sessionService.GetOrCreateForMessageAsync(user.Id, request.SessionId, request.Content);
 
-            // 2. Persist the user's message immediately — durable transcript
-            //    regardless of what happens to the job afterward.
-            _db.ChatMessages.Add(new ChatMessage
-            {
-                SessionId = session.Id,
-                UserId = user.Id,
-                Role = ChatMessageRole.User,
-                Content = request.Content,
-            });
-            session.LastMessageAt = DateTimeOffset.UtcNow;
-            await _db.SaveChangesAsync();
-
-            // 3. RETRIEVE the existing session summary (generation happens after
+            // 2. RETRIEVE the existing session summary (generation happens after
             //    the AI replies — see InternalAiController.SubmitResult).
             var contextSummary = session.SummaryText;
 
-            // 4. Create the job with the expanded payload
+            // 3. Create the job with the expanded payload
             var job = await _jobService.CreateAsync(user.Id, JobType.Chat, new
             {
                 userId = user.Id,
@@ -88,6 +76,22 @@ namespace BE.Controllers
                 contextSummary,
             }, session.Id);
 
+            // 4. Persist the user's message immediately — durable transcript
+            //    regardless of what happens to the job afterward. Tagged with
+            //    JobId so the worker's result callback can find the *exact*
+            //    user turn that triggered this job later, instead of just
+            //    "whichever user message is newest" (see ChatMessage.JobId).
+            _db.ChatMessages.Add(new ChatMessage
+            {
+                SessionId = session.Id,
+                UserId = user.Id,
+                Role = ChatMessageRole.User,
+                Content = request.Content,
+                JobId = job.Id,
+            });
+            session.LastMessageAt = DateTimeOffset.UtcNow;
+
+            await _db.SaveChangesAsync();
             await _jobQueueService.PublishAsync(job.Id);
 
             return Ok(new { jobId = job.Id, sessionId = session.Id });

@@ -8,8 +8,8 @@ using BE.Models;
 using BE.ServiceContracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
-using BE.ServiceContracts;
 namespace BE.Controllers;
 
 /// <summary>
@@ -27,16 +27,19 @@ public class InternalAiController : ControllerBase
     private readonly IFileStorageService _fileStorage;
     private readonly string _serviceToken;
     private readonly ISummarizationService _summarizationService;
+    private readonly IBackgroundTaskQueue _backgroundTaskQueue;
 
     public InternalAiController(
         AppDbContext db,
         IFileStorageService fileStorage,
         IConfiguration config,
-        ISummarizationService summarizationService)
+        ISummarizationService summarizationService,
+        IBackgroundTaskQueue backgroundTaskQueue)
     {
         _db = db;
         _fileStorage = fileStorage;
         _summarizationService = summarizationService;
+        _backgroundTaskQueue = backgroundTaskQueue;
         _serviceToken = config["ServiceAuth:Token"]
             ?? throw new InvalidOperationException("ServiceAuth:Token is not configured.");
     }
@@ -321,39 +324,56 @@ public class InternalAiController : ControllerBase
             ResponseType = responseType,
             JobId = job.Id,
         };
+
         _db.ChatMessages.Add(assistantMessage);
 
         var session = await _db.ChatSessions.FirstOrDefaultAsync(s => s.Id == job.SessionId!.Value);
+
         if (session != null)
         {
             session.LastMessageAt = DateTimeOffset.UtcNow;
+        }
 
-            // Pull the last user message for this job to feed the summarizer
-            var userTurn = await _db.ChatMessages
-                .Where(m => m.SessionId == session.Id && m.Role == ChatMessageRole.User)
-                .OrderByDescending(m => m.CreatedAt)
-                .Select(m => m.Content)
-                .FirstOrDefaultAsync() ?? "";
+        // Pull the exact user turn that triggered THIS job (tagged with
+        // JobId at send time — see ChatController.SendMessage).
+        var userTurn = await _db.ChatMessages
+            .Where(m => m.JobId == job.Id && m.Role == ChatMessageRole.User)
+            .Select(m => m.Content)
+            .FirstOrDefaultAsync() ?? "";
 
-            var newTurns = new List<ChatTurn>
+        // Summary refresh is fire-and-forget from here: enqueue it and
+        // return. This keeps a slow/unavailable summarization provider from
+        // adding latency to job completion (which the worker is
+        // synchronously blocked on).
+        if (session != null)
         {
-            new(ChatMessageRole.User, userTurn),
-            new(ChatMessageRole.Assistant, displayContent),
-        };
+            var sessionId = session.Id;
+            _backgroundTaskQueue.QueueBackgroundWorkItem(async (services, ct) =>
+            {
+                var db = services.GetRequiredService<AppDbContext>();
+                var summarizer = services.GetRequiredService<ISummarizationService>();
 
-            // Best-effort — never blocks or fails the job on summarizer errors
-            // (ExternalAiSummarizationService already swallows its own exceptions;
-            // this catch covers the extractive path or any future provider).
-            try
-            {
-                var updatedSummary = await _summarizationService.SummarizeAsync(session.SummaryText, newTurns);
-                session.SummaryText = updatedSummary;
-                session.SummaryUpdatedAt = DateTimeOffset.UtcNow;
-            }
-            catch
-            {
-                // keep the previous summary; don't fail result submission over this
-            }
+                var s = await db.ChatSessions.FirstOrDefaultAsync(x => x.Id == sessionId, ct);
+                if (s is null) return;
+
+                var newTurns = new List<ChatTurn>
+                {
+                    new(ChatMessageRole.User, userTurn),
+                    new(ChatMessageRole.Assistant, displayContent),
+                };
+
+                try
+                {
+                    var updatedSummary = await summarizer.SummarizeAsync(s.SummaryText, newTurns, ct);
+                    s.SummaryText = updatedSummary;
+                    s.SummaryUpdatedAt = DateTimeOffset.UtcNow;
+                    await db.SaveChangesAsync(ct);
+                }
+                catch
+                {
+                    // Best-effort — leave the previous summary in place.
+                }
+            });
         }
     }
 
