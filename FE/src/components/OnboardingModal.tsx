@@ -555,6 +555,8 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
       <Modal
         open={open}
         closable={closable}
+        maskClosable={false}
+        keyboard={false}
         onCancel={onClose}
         footer={null}
         centered

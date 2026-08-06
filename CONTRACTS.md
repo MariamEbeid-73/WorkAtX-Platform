@@ -178,6 +178,7 @@ All endpoints except `/api/internal/*` require a **Clerk JWT** (`Authorization: 
 | `/api/jobs/{id}/status` | GET | Clerk + ownership | status object (below) |
 | `/api/jobs/{id}/result` | GET | Clerk + ownership | result object (below) |
 | `/api/analysis1/start` | POST | Clerk | `{ "jobId": "<guid>" }` |
+| `/api/analysis1/latest` | GET | Clerk | `ApiResponse<result|null>` — last completed Analysis 1 result from the DB; never queues a job. `data` is `null` when none exists yet or the stored result is stale |
 | `/resumes/{id}/confirm` | POST | Clerk | `{ "resume": {...}, "analysisJobId": "<guid>|null" }` |
 | `/api/profile/scores` | GET | Clerk | score breakdown or `data: null` |
 | `/api/internal/ai/context/{userId}` | GET | `X-Service-Token` | AI context (below) |

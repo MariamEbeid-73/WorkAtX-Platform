@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Flex, Typography, Tag, message } from "antd";
 import {
@@ -14,13 +14,13 @@ import {
   LinkOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "@clerk/react";
-import * as signalR from "@microsoft/signalr";
 import type {
   AnalysisResult,
   ScoreMetric,
   ScoreDomain,
 } from "../types/analysis";
-import { config } from "../config";
+import { waitForJobCompletion, getJobResult } from "../services/jobService";
+import { startAnalysis, getLatestAnalysis } from "../services/analysisService";
 
 const { Title, Text } = Typography;
 
@@ -42,92 +42,64 @@ function AnalysisLoadingState({
   >([]);
   const [progress, setProgress] = useState(0);
   const { getToken } = useAuth();
-  const isMounted = useRef(true);
 
   useEffect(() => {
-    isMounted.current = true;
-    let connection: signalR.HubConnection | null = null;
-    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    let cancelled = false;
 
-    const connectAndListen = async () => {
+    const run = async () => {
       try {
         const token = await getToken();
-        connection = new signalR.HubConnectionBuilder()
-          .withUrl(`${config.apiUrl}/hubs/job-status`, {
-            accessTokenFactory: () => token || "",
-          })
-          .withAutomaticReconnect()
-          .build();
+        if (!token) throw new Error("Not authenticated");
 
-        await connection.start();
-        await connection.invoke("SubscribeToJob", jobId);
+        // Same wait path as chat: SignalR push first, polling as fallback.
+        const finalStatus = await waitForJobCompletion(getToken, token, jobId, {
+          onProgress: (update) => {
+            if (cancelled) return;
+            if (update.progress != null) setProgress(update.progress);
 
-        connection.on("job_status_update", (jobStatus) => {
-          if (!isMounted.current) return;
-          const { status, stage, progress: percent } = jobStatus;
-          if (percent != null) setProgress(percent);
-
-          if (stage) {
-            setStages((prev) => {
-              const next = prev.map((s) => ({
-                ...s,
-                isActive: false,
-                isDone: true,
-              }));
-              if (!next.find((s) => s.label === stage)) {
-                next.push({ label: stage, isActive: true, isDone: false });
-              } else {
-                const existing = next.find((s) => s.label === stage)!;
-                existing.isActive = true;
-                existing.isDone = false;
-              }
-              return next;
-            });
-          }
-
-          if (status === "completed") {
-            fetchResult();
-          } else if (status === "failed") {
-            if (isMounted.current) onError();
-          }
+            if (update.stage) {
+              const stage = update.stage;
+              setStages((prev) => {
+                const next = prev.map((s) => ({
+                  ...s,
+                  isActive: false,
+                  isDone: true,
+                }));
+                const existing = next.find((s) => s.label === stage);
+                if (!existing) {
+                  next.push({ label: stage, isActive: true, isDone: false });
+                } else {
+                  existing.isActive = true;
+                  existing.isDone = false;
+                }
+                return next;
+              });
+            }
+          },
         });
 
-        // Fallback polling just to catch completed status if websocket misses it
-        pollInterval = setInterval(async () => {
-          const res = await fetch(`${config.apiUrl}/api/jobs/${jobId}/status`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const data = await res.json();
-          if (data.status === "completed") {
-            fetchResult();
-          } else if (data.status === "failed") {
-            if (isMounted.current) onError();
-          }
-        }, 3000);
+        if (finalStatus.status === "failed") {
+          if (cancelled) return;
+          onError();
+          return;
+        }
+
+        const res = await getJobResult(token, jobId);
+        if (cancelled) return;
+        onDone(res.result as AnalysisResult);
       } catch (e) {
         console.error(e);
-        if (isMounted.current) onError();
+        if (cancelled) return;
+        onError();
       }
     };
 
-    const fetchResult = async () => {
-      if (pollInterval) clearInterval(pollInterval);
-      const token = await getToken();
-      const res = await fetch(`${config.apiUrl}/api/jobs/${jobId}/result`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (isMounted.current) onDone(data.result);
-    };
-
-    connectAndListen();
+    run();
 
     return () => {
-      isMounted.current = false;
-      if (pollInterval) clearInterval(pollInterval);
-      if (connection) connection.stop();
+      cancelled = true;
     };
-  }, [jobId]);
+  }, [jobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div
@@ -1789,13 +1761,9 @@ export function KnowledgeGraphPage() {
     setResultData(null);
     try {
       const token = await getToken();
-      const res = await fetch(`${config.apiUrl}/api/analysis1/start`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Failed to start analysis");
-      const data = await res.json();
-      setJobId(data.jobId);
+      if (!token) throw new Error("Not authenticated.");
+      const { jobId } = await startAnalysis(token);
+      setJobId(jobId);
     } catch (e) {
       console.error(e);
       message.error("Failed to start analysis. Check if you uploaded a CV.");
@@ -1804,10 +1772,33 @@ export function KnowledgeGraphPage() {
   };
 
   useEffect(() => {
+    // Explicit re-run request (e.g. right after onboarding) — queue a fresh job.
     if (searchParams.get("analyze") === "true") {
       triggerAnalysis();
       setSearchParams({}, { replace: true });
+      return;
     }
+
+    // Plain mount/refresh — restore the last completed analysis from the DB
+    // instead of creating a new job. Stays "idle" when there is none yet.
+    let cancelled = false;
+    const loadLatest = async () => {
+      try {
+        const token = await getToken();
+        if (!token) return;
+        const res = await getLatestAnalysis(token);
+        if (cancelled || !res.data) return;
+        setResultData(res.data);
+        setPageState("result");
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    loadLatest();
+
+    return () => {
+      cancelled = true;
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLoadingDone = (data: AnalysisResult) => {
