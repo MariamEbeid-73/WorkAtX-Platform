@@ -6,8 +6,8 @@ import {
   sendChatMessage,
   renameChatSession,
   archiveChatSession,
-  waitForJobCompletion,
 } from "../services/chatService";
+import { waitForJobCompletion } from "../services/jobService";
 import type { ChatSessionDto, UiChatMessage } from "../types/chat";
 
 function toUiMessage(m: {

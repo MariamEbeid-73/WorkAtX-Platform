@@ -10,6 +10,7 @@ import {
   getDownloadUrl,
   deleteResume,
 } from '../services/resumeService';
+import { waitForJobCompletion } from '../services/jobService';
 import type { ResumeFile } from '../types/resume';
 
 const { Title, Text } = Typography;
@@ -24,6 +25,9 @@ export function ResumesPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [parsing, setParsing] = useState(false);
+  const [parseStage, setParseStage] = useState<string | null>(null);
+  const [parseProgress, setParseProgress] = useState(0);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [msgApi, ctx] = message.useMessage();
 
@@ -53,16 +57,38 @@ export function ResumesPage() {
     try {
       setUploading(true);
       setUploadProgress(0);
+      setParseStage(null);
+      setParseProgress(0);
       const token = await getToken();
       const { resumeId, uploadUrl } = await createUploadIntent(token!, file);
       await uploadToMinIO(uploadUrl, file, (pct) => setUploadProgress(pct));
-      await confirmUpload(token!, resumeId);
+      const { analysisJobId } = await confirmUpload(token!, resumeId);
       setUploading(false);
       setUploadProgress(0);
       msgApi.success('Resume uploaded!');
+
+      // Same wait path as chat: SignalR push first, polling as fallback.
+      if (analysisJobId) {
+        setParsing(true);
+        try {
+          const finalStatus = await waitForJobCompletion(getToken, token!, analysisJobId, {
+            onProgress: (u) => {
+              if (u.stage) setParseStage(u.stage);
+              if (u.progress != null) setParseProgress(u.progress);
+            },
+          });
+          if (finalStatus.status === 'failed') {
+            msgApi.warning('Upload succeeded, but the AI analysis failed.');
+          }
+        } finally {
+          setParsing(false);
+        }
+      }
+
       await loadResumes();
     } catch (e: any) {
       setUploading(false);
+      setParsing(false);
       msgApi.error(e.message ?? 'Upload failed.');
     }
   };
@@ -148,6 +174,19 @@ export function ResumesPage() {
           trailColor="rgba(255,255,255,0.06)"
           style={{ marginBottom: 24 }}
         />
+      )}
+
+      {parsing && (
+        <Flex vertical gap={4} style={{ marginBottom: 24 }}>
+          <Progress
+            percent={parseProgress}
+            strokeColor={{ '0%': '#8B5CF6', '100%': '#06B6D4' }}
+            trailColor="rgba(255,255,255,0.06)"
+          />
+          <Text style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+            {parseStage ?? 'Analyzing your CV…'}
+          </Text>
+        </Flex>
       )}
 
       {loading ? (

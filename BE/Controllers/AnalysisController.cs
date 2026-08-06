@@ -1,3 +1,5 @@
+using System.Text.Json;
+using BE.Common;
 using BE.Common.Exceptions;
 using BE.Data;
 using BE.Models;
@@ -88,5 +90,33 @@ public class AnalysisController : ControllerBase
         await _jobQueueService.PublishAsync(job.Id);
 
         return Ok(new { jobId = job.Id });
+    }
+
+    /// <summary>
+    /// GET /api/analysis1/latest
+    /// Returns the user's most recent completed Analysis 1 result straight from
+    /// the DB — so a page refresh restores the last analysis WITHOUT creating a
+    /// new job. data is null when no analysis exists yet, or the stored result
+    /// is stale (a re-parse is in flight). Never triggers or queues a job.
+    /// </summary>
+    [HttpGet("latest")]
+    public async Task<IActionResult> GetLatest()
+    {
+        var user = await _userService.GetOrCreateUserAsync(
+            _currentUserService.GetClerkUserId(),
+            _currentUserService.GetEmail());
+
+        var analysis = await _db.UserAnalyses
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.UserId == user.Id);
+
+        if (analysis is null || analysis.IsStale)
+            return Ok(ApiResponse<object?>.Ok(null));
+
+        object? result = null;
+        if (!string.IsNullOrEmpty(analysis.ResultJson))
+            result = JsonSerializer.Deserialize<JsonElement>(analysis.ResultJson);
+
+        return Ok(ApiResponse<object?>.Ok(result));
     }
 }

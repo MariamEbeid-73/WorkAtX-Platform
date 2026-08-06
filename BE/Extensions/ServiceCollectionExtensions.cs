@@ -108,7 +108,7 @@ public static class ServiceCollectionExtensions
         if (summarizationProvider.Equals("external", StringComparison.OrdinalIgnoreCase))
             services.AddScoped<ISummarizationService, SummarizationService>();
         else
-            services.AddScoped<ISummarizationService, SummarizationService>();
+            services.AddScoped<ISummarizationService, ExtractiveSummarizationService>();
 
 
         // Redis connection is shared across the process — a singleton.

@@ -1,5 +1,5 @@
 import { api } from './api';
-import type { ResumeFile, UploadIntentResponse, DownloadUrlResponse } from '../types/resume';
+import type { ResumeFile, UploadIntentResponse, DownloadUrlResponse, ConfirmUploadResponse } from '../types/resume';
 
 export const createUploadIntent = (
     token: string,
@@ -52,8 +52,8 @@ export function uploadToMinIO(
 }
 
 /** Step 3: tell the backend the upload is done. */
-export const confirmUpload = (token: string, resumeId: string): Promise<ResumeFile> =>
-    api<ResumeFile>(`/resumes/${resumeId}/confirm`, token, { method: 'POST' });
+export const confirmUpload = (token: string, resumeId: string): Promise<ConfirmUploadResponse> =>
+    api<ConfirmUploadResponse>(`/resumes/${resumeId}/confirm`, token, { method: 'POST' });
 
 /** Returns all confirmed resumes for the current user. */
 export const listResumes = (token: string): Promise<ResumeFile[]> =>
