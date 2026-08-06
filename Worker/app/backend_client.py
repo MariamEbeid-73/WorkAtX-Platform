@@ -2,7 +2,7 @@ import os
 import requests
 
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://workx-be:5000")
-SERVICE_TOKEN = os.getenv("SERVICE_TOKEN", "dev-service-token")
+SERVICE_TOKEN = os.getenv("SERVICE_AUTH_TOKEN", "dev-service-token")
 
 HEADERS = {
     "X-Service-Token": SERVICE_TOKEN,
