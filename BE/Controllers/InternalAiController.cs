@@ -352,8 +352,10 @@ public class InternalAiController : ControllerBase
 
             // Pull the last user message for this job to feed the summarizer
             var userTurn = await _db.ChatMessages
-                .Where(m => m.SessionId == session.Id && m.Role == ChatMessageRole.User)
-                .OrderByDescending(m => m.JobId == job.Id)
+                .Where(m => m.SessionId == session.Id
+                 && m.Role == ChatMessageRole.User
+                 && m.JobId == job.Id)
+                .OrderByDescending(m => m.CreatedAt)
                 .Select(m => m.Content)
                 .FirstOrDefaultAsync() ?? "";
 
