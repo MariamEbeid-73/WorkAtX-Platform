@@ -28,12 +28,20 @@ public class SummarizationService : ISummarizationService
     }
 
     public async Task<string> SummarizeAsync(
-        string? previousSummary,
-        IReadOnlyList<ChatTurn> newTurns,
-        CancellationToken ct = default)
+    string? previousSummary,
+    IReadOnlyList<ChatTurn> newTurns,
+    CancellationToken ct = default)
+{
+    try
     {
-        var apiUrl = _config["Summarization:ApiUrl"]
-            ?? throw new InvalidOperationException("Summarization:ApiUrl is not configured.");
+        var apiUrl = _config["Summarization:ApiUrl"];
+        if (string.IsNullOrWhiteSpace(apiUrl))
+        {
+            _logger.LogWarning(
+                "Summarization:ApiUrl is not configured; skipping external summarization and keeping previous summary.");
+            return previousSummary ?? string.Empty;
+        }
+
         var apiKey = _config["Summarization:ApiKey"] ?? "";
         var model = _config["Summarization:Model"] ?? "gpt-4o-mini";
 
@@ -71,26 +79,24 @@ public class SummarizationService : ISummarizationService
         if (!string.IsNullOrEmpty(apiKey))
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
-        try
-        {
-            var response = await client.SendAsync(request, ct);
-            response.EnsureSuccessStatusCode();
+        var response = await client.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
 
-            var json = await response.Content.ReadAsStringAsync(ct);
-            using var doc = JsonDocument.Parse(json);
+        var json = await response.Content.ReadAsStringAsync(ct);
+        using var doc = JsonDocument.Parse(json);
 
-            var summary = doc.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString();
+        var summary = doc.RootElement
+            .GetProperty("choices")[0]
+            .GetProperty("message")
+            .GetProperty("content")
+            .GetString();
 
-            return summary?.Trim() ?? previousSummary ?? string.Empty;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Summarization call failed; keeping previous summary.");
-            return previousSummary ?? string.Empty;
-        }
+        return summary?.Trim() ?? previousSummary ?? string.Empty;
     }
+    catch (Exception ex)
+    {
+        _logger.LogWarning(ex, "Summarization call failed; keeping previous summary.");
+        return previousSummary ?? string.Empty;
+    }
+}
 }
