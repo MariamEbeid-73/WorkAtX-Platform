@@ -1,7 +1,8 @@
 ﻿using BE.Data;
 using BE.Models;
-using Microsoft.EntityFrameworkCore;
 using BE.ServiceContracts;
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 
 namespace BE.Services;
 
@@ -34,7 +35,7 @@ public class UserService : IUserService
         {
             var winner = await _db.Users.FirstOrDefaultAsync(u => u.ClerkUserId == clerkUserId);
             if (winner != null) return winner;
-            throw; 
+            throw;
         }
 
         return user;
@@ -44,4 +45,6 @@ public class UserService : IUserService
     {
         return await _db.Users.FirstOrDefaultAsync(u => u.ClerkUserId == clerkUserId);
     }
+
+    public User? GetCached(HttpContext context) => context.Items["CurrentUser"] as User;
 }

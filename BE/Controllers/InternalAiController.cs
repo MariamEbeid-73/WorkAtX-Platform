@@ -4,9 +4,11 @@ using System.Text.Json;
 using BE.Common.Exceptions;
 using BE.Data;
 using BE.DTOs.Ai;
+using BE.Hubs;
 using BE.Models;
 using BE.ServiceContracts;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace BE.Controllers;
@@ -25,11 +27,20 @@ public class InternalAiController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IFileStorageService _fileStorage;
     private readonly string _serviceToken;
+    private readonly ISummarizationService _summarizationService;
+    private readonly IHubContext<JobStatusHub> _hubContext;
 
-    public InternalAiController(AppDbContext db, IFileStorageService fileStorage, IConfiguration config)
+    public InternalAiController(
+        AppDbContext db,
+        IFileStorageService fileStorage,
+        IConfiguration config,
+        ISummarizationService summarizationService,
+        IHubContext<JobStatusHub> hubContext)
     {
         _db = db;
         _fileStorage = fileStorage;
+        _summarizationService = summarizationService;
+        _hubContext = hubContext;
         _serviceToken = config["ServiceAuth:Token"]
             ?? throw new InvalidOperationException("ServiceAuth:Token is not configured.");
     }
@@ -81,54 +92,54 @@ public class InternalAiController : ControllerBase
     /// Used mid-processing by the AI Node (Step 7a).
     /// </summary>
     [HttpGet("gap-analysis/{userId:guid}")]
-    public async Task<IActionResult> GetGapAnalysis(Guid userId)
+    public async Task<IActionResult> GetGapAnalysis(Guid userId, [FromQuery] Guid? sessionId)
     {
         if (!IsAuthorized(Request))
             throw new UnauthorizedAppException("Invalid or missing service token.");
 
-        var gapAnalysis = await _db.UserGapAnalyses
-            .AsNoTracking()
-            .FirstOrDefaultAsync(g => g.UserId == userId)
-            ?? throw new NotFoundException($"No gap analysis found for user {userId}.");
+        var query = _db.UserGapAnalyses.AsNoTracking().Where(g => g.UserId == userId);
+        if (sessionId.HasValue)
+            query = query.Where(g => g.SessionId == sessionId.Value);
+
+        var gapAnalysis = await query
+            .OrderByDescending(g => g.CreatedAt)
+            .FirstOrDefaultAsync()
+            ?? throw new NotFoundException($"No gap analysis found for user {userId}" +
+                (sessionId.HasValue ? $" and session {sessionId}." : "."));
 
         object? result = null;
         if (!string.IsNullOrEmpty(gapAnalysis.ResultJson))
             result = JsonSerializer.Deserialize<JsonElement>(gapAnalysis.ResultJson);
 
-        return Ok(new
-        {
-            userId,
-            gapAnalysis = result,
-            updatedAt = gapAnalysis.UpdatedAt
-        });
+        return Ok(new { userId, sessionId = gapAnalysis.SessionId, gapAnalysis = result, updatedAt = gapAnalysis.UpdatedAt });
     }
 
     /// <summary>
-    /// GET /api/internal/ai/plan/{userId}
+    /// GET /api/internal/ai/study-plan/{userId}
     /// Returns the user's latest Study Plan result stored in UserStudyPlans.
-    /// Used mid-processing by the AI Node (Step 7a).
+    /// Used mid-processing by the AI Node (Step ).
     /// </summary>
     [HttpGet("plan/{userId:guid}")]
-    public async Task<IActionResult> GetStudyPlan(Guid userId)
+    public async Task<IActionResult> GetStudyPlan(Guid userId, [FromQuery] Guid? sessionId)
     {
         if (!IsAuthorized(Request))
             throw new UnauthorizedAppException("Invalid or missing service token.");
 
-        var plan = await _db.UserStudyPlans
-            .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.UserId == userId)
-            ?? throw new NotFoundException($"No study plan found for user {userId}.");
+        var query = _db.UserStudyPlans.AsNoTracking().Where(p => p.UserId == userId);
+        if (sessionId.HasValue)
+            query = query.Where(p => p.SessionId == sessionId.Value);
+
+        var plan = await query
+            .OrderByDescending(p => p.CreatedAt)
+            .FirstOrDefaultAsync()
+            ?? throw new NotFoundException($"No study plan found for user {userId}" +
+                (sessionId.HasValue ? $" and session {sessionId}." : "."));
 
         object? result = null;
         if (!string.IsNullOrEmpty(plan.ResultJson))
             result = JsonSerializer.Deserialize<JsonElement>(plan.ResultJson);
 
-        return Ok(new
-        {
-            userId,
-            studyPlan = result,
-            updatedAt = plan.UpdatedAt
-        });
+        return Ok(new { userId, sessionId = plan.SessionId, studyPlan = result, updatedAt = plan.UpdatedAt });
     }
 
     /// <summary>
@@ -200,6 +211,11 @@ public class InternalAiController : ControllerBase
         job.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync();
 
+        // Push the queued -> processing transition immediately so a client
+        // that's connected before the AI Node even picks up the job sees it
+        // live, not just on its next poll.
+        await BroadcastJobUpdateAsync(job);
+
         return Ok(new AiJobResponse(
             job.Id,
             job.JobType,
@@ -237,80 +253,129 @@ public class InternalAiController : ControllerBase
         if (job.Status is JobStatus.Completed or JobStatus.Failed)
             throw new ConflictException($"Job {jobId} is already {job.Status} — refusing a double-submit.");
 
-        job.Status = request.Status;
-        job.UpdatedAt = DateTimeOffset.UtcNow;
+        var effectiveStatus = request.Status;
+        string? effectiveError = request.Status == JobStatus.Failed ? request.Error : null;
 
-        if (job.JobType == JobType.Analysis1)
+        try
         {
-            if (request.Status == JobStatus.Completed)
-                SaveAnalysis1Result(job, request.ResultJson!);
-        }
-        else
-        {
-            // If completed, check response_type inside resultJson to persist to UserGapAnalyses or UserStudyPlans
-            if (request.Status == JobStatus.Completed && !string.IsNullOrEmpty(request.ResultJson))
+            if (job.JobType == JobType.Analysis1)
             {
-                SaveUnifiedResultIfApplicable(job.UserId, request.ResultJson);
+                if (request.Status == JobStatus.Completed)
+                    SaveAnalysis1Result(job, request.ResultJson!);
+            }
+            else if (request.Status == JobStatus.Completed && !string.IsNullOrEmpty(request.ResultJson) && job.SessionId.HasValue)
+            {
+                await SaveChatResultAsync(job, request.ResultJson!);
             }
         }
+        catch (Exception ex)
+        {
+            // NEW — a malformed/unroutable result still resolves the job as
+            // failed instead of leaving it stuck in "processing" forever.
+            effectiveStatus = JobStatus.Failed;
+            effectiveError = $"Result routing failed: {ex.Message}";
+        }
 
-        job.ResultJson = request.Status == JobStatus.Completed ? request.ResultJson : null;
-        job.Error = request.Status == JobStatus.Failed ? request.Error : null;
+        job.Status = effectiveStatus;
+        job.UpdatedAt = DateTimeOffset.UtcNow;
+        job.ResultJson = effectiveStatus == JobStatus.Completed ? request.ResultJson : null;
+        job.Error = effectiveStatus == JobStatus.Failed ? effectiveError : null;
 
         await _db.SaveChangesAsync();
+        await BroadcastJobUpdateAsync(job);
 
         return Ok(new AiResultResponse(job.Id, job.Status));
     }
 
-    private void SaveUnifiedResultIfApplicable(Guid userId, string resultJson)
+    /// <summary>
+    /// Routes the AI's responseType, appends the assistant ChatMessage, persists
+    /// GapAnalysis/StudyPlan rows (session-scoped), and refreshes the session's
+    /// rolling summary via ISummarizationService — never the career-coaching AI.
+    /// </summary>
+    private async Task SaveChatResultAsync(Job job, string resultJson)
     {
-        try
+        string responseType;
+        string displayContent;
+
+        using (var doc = JsonDocument.Parse(resultJson))
         {
-            using var doc = JsonDocument.Parse(resultJson);
-            if (doc.RootElement.TryGetProperty("response_type", out var typeProp))
+            var root = doc.RootElement;
+            responseType = root.TryGetProperty("responseType", out var typeProp)
+                ? typeProp.GetString() ?? AiResponseType.NormalText
+                : AiResponseType.NormalText;
+
+            displayContent = responseType switch
             {
-                var responseType = typeProp.GetString();
-                if (responseType == "gap_analysis_result")
+                AiResponseType.NormalText => root.TryGetProperty("reply", out var r) ? r.GetString() ?? "" : "",
+                AiResponseType.GapAnalysis => root.TryGetProperty("summary", out var s) ? s.GetString() ?? "Gap analysis ready." : "Gap analysis ready.",
+                AiResponseType.StudyPlan => root.TryGetProperty("summary", out var s2) ? s2.GetString() ?? "Study plan ready." : "Study plan ready.",
+                _ => ""
+            };
+
+            if (responseType == AiResponseType.GapAnalysis)
+            {
+                _db.UserGapAnalyses.Add(new UserGapAnalysis
                 {
-                    var existing = _db.UserGapAnalyses.FirstOrDefault(g => g.UserId == userId);
-                    if (existing == null)
-                    {
-                        _db.UserGapAnalyses.Add(new UserGapAnalysis
-                        {
-                            UserId = userId,
-                            ResultJson = resultJson,
-                            UpdatedAt = DateTimeOffset.UtcNow
-                        });
-                    }
-                    else
-                    {
-                        existing.ResultJson = resultJson;
-                        existing.UpdatedAt = DateTimeOffset.UtcNow;
-                    }
-                }
-                else if (responseType == "study_plan_result")
+                    UserId = job.UserId,
+                    SessionId = job.SessionId!.Value,
+                    JobId = job.Id,
+                    ResultJson = resultJson,
+                });
+            }
+            else if (responseType == AiResponseType.StudyPlan)
+            {
+                _db.UserStudyPlans.Add(new UserStudyPlan
                 {
-                    var existing = _db.UserStudyPlans.FirstOrDefault(s => s.UserId == userId);
-                    if (existing == null)
-                    {
-                        _db.UserStudyPlans.Add(new UserStudyPlan
-                        {
-                            UserId = userId,
-                            ResultJson = resultJson,
-                            UpdatedAt = DateTimeOffset.UtcNow
-                        });
-                    }
-                    else
-                    {
-                        existing.ResultJson = resultJson;
-                        existing.UpdatedAt = DateTimeOffset.UtcNow;
-                    }
-                }
+                    UserId = job.UserId,
+                    SessionId = job.SessionId!.Value,
+                    JobId = job.Id,
+                    ResultJson = resultJson,
+                });
             }
         }
-        catch
+
+        var assistantMessage = new ChatMessage
         {
-            // Ignore JSON parsing errors if payload structure differs
+            SessionId = job.SessionId!.Value,
+            UserId = job.UserId,
+            Role = ChatMessageRole.Assistant,
+            Content = displayContent,
+            ResponseType = responseType,
+            JobId = job.Id,
+        };
+        _db.ChatMessages.Add(assistantMessage);
+
+        var session = await _db.ChatSessions.FirstOrDefaultAsync(s => s.Id == job.SessionId!.Value);
+        if (session != null)
+        {
+            session.LastMessageAt = DateTimeOffset.UtcNow;
+
+            // Pull the last user message for this job to feed the summarizer
+            var userTurn = await _db.ChatMessages
+                .Where(m => m.SessionId == session.Id && m.Role == ChatMessageRole.User)
+                .OrderByDescending(m => m.CreatedAt)
+                .Select(m => m.Content)
+                .FirstOrDefaultAsync() ?? "";
+
+            var newTurns = new List<ChatTurn>
+        {
+            new(ChatMessageRole.User, userTurn),
+            new(ChatMessageRole.Assistant, displayContent),
+        };
+
+            // Best-effort — never blocks or fails the job on summarizer errors
+            // (ExternalAiSummarizationService already swallows its own exceptions;
+            // this catch covers the extractive path or any future provider).
+            try
+            {
+                var updatedSummary = await _summarizationService.SummarizeAsync(session.SummaryText, newTurns);
+                session.SummaryText = updatedSummary;
+                session.SummaryUpdatedAt = DateTimeOffset.UtcNow;
+            }
+            catch
+            {
+                // keep the previous summary; don't fail result submission over this
+            }
         }
     }
 
@@ -337,6 +402,25 @@ public class InternalAiController : ControllerBase
             analysis.UpdatedAt = DateTimeOffset.UtcNow;
         }
     }
+
+    /// <summary>
+    /// Single point of truth for the "job_status_update" SignalR event shape.
+    /// Used here for the processing/completed/failed transitions, and mirrored
+    /// by JobProgressStreamConsumer for in-flight progress ticks — same event
+    /// name, same field set, so the frontend needs exactly one handler.
+    /// </summary>
+    private Task BroadcastJobUpdateAsync(Job job) =>
+        _hubContext.Clients.Group(JobStatusHub.GroupName(job.Id)).SendAsync(
+            "job_status_update",
+            new
+            {
+                jobId = job.Id,
+                status = job.Status,
+                stage = job.Stage,
+                progress = job.Progress,
+                error = job.Error,
+                timestamp = DateTimeOffset.UtcNow,
+            });
 
     private bool IsAuthorized(HttpRequest request)
     {

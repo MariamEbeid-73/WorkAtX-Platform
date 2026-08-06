@@ -16,6 +16,9 @@ public class AppDbContext : DbContext
     public DbSet<ProfileScore> ProfileScores => Set<ProfileScore>();
     public DbSet<UserGapAnalysis> UserGapAnalyses => Set<UserGapAnalysis>();
     public DbSet<UserStudyPlan> UserStudyPlans => Set<UserStudyPlan>();
+    public DbSet<ChatSession> ChatSessions => Set<ChatSession>();
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -54,8 +57,13 @@ public class AppDbContext : DbContext
             entity.ToTable("Jobs");
             entity.HasIndex(j => j.UserId).HasDatabaseName("IX_Jobs_UserId");
             entity.HasIndex(j => j.Status).HasDatabaseName("IX_Jobs_Status");
+            entity.HasIndex(j => j.SessionId).HasDatabaseName("IX_Jobs_SessionId");
+
+            entity.HasOne(j => j.Session).WithMany()
+    .HasForeignKey(j => j.SessionId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(j => j.User).WithMany()
                 .HasForeignKey(j => j.UserId).OnDelete(DeleteBehavior.Cascade);
+
             entity.Property(j => j.CreatedAt).HasDefaultValueSql("NOW()");
             entity.Property(j => j.UpdatedAt).HasDefaultValueSql("NOW()");
         });
@@ -68,6 +76,7 @@ public class AppDbContext : DbContext
             entity.HasOne(a => a.ResumeFile).WithMany()
                 .HasForeignKey(a => a.ResumeFileId).OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(a => a.ResumeFileId).HasDatabaseName("IX_UserAnalyses_ResumeFileId");
+
             entity.Property(a => a.ResultJson).HasColumnType("jsonb");
             entity.Property(a => a.CreatedAt).HasDefaultValueSql("NOW()");
             entity.Property(a => a.UpdatedAt).HasDefaultValueSql("NOW()");
@@ -78,25 +87,54 @@ public class AppDbContext : DbContext
             entity.ToTable("ProfileScores");
             entity.HasOne(p => p.User).WithOne()
                 .HasForeignKey<ProfileScore>(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
+
             entity.Property(p => p.BreakdownJson).HasColumnType("jsonb");
             entity.Property(p => p.CreatedAt).HasDefaultValueSql("NOW()");
             entity.Property(p => p.UpdatedAt).HasDefaultValueSql("NOW()");
         });
+
+        modelBuilder.Entity<ChatSession>(entity =>
+        {
+            entity.ToTable("ChatSessions");
+            entity.HasIndex(s => new { s.UserId, s.LastMessageAt }).HasDatabaseName("IX_ChatSessions_User_LastMessageAt");
+            entity.HasOne(s => s.User).WithMany()
+                .HasForeignKey(s => s.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.Property(s => s.CreatedAt).HasDefaultValueSql("NOW()");
+            entity.Property(s => s.UpdatedAt).HasDefaultValueSql("NOW()");
+        });
+
+        modelBuilder.Entity<ChatMessage>(entity =>
+        {
+            entity.ToTable("ChatMessages");
+            entity.HasIndex(m => new { m.SessionId, m.CreatedAt }).HasDatabaseName("IX_ChatMessages_Session_CreatedAt");
+            entity.HasOne(m => m.Session).WithMany(s => s.Messages)
+                .HasForeignKey(m => m.SessionId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(m => m.Job).WithMany()
+                .HasForeignKey(m => m.JobId).OnDelete(DeleteBehavior.SetNull);
+            entity.Property(m => m.CreatedAt).HasDefaultValueSql("NOW()");
+        });
+
         modelBuilder.Entity<UserGapAnalysis>(entity =>
         {
             entity.ToTable("UserGapAnalyses");
-            entity.HasOne(a => a.User).WithOne()
-                .HasForeignKey<UserGapAnalysis>(a => a.UserId).OnDelete(DeleteBehavior.Cascade);
-            entity.Property(a => a.ResultJson).HasColumnType("jsonb");
-            entity.Property(a => a.CreatedAt).HasDefaultValueSql("NOW()");
-            entity.Property(a => a.UpdatedAt).HasDefaultValueSql("NOW()");
+            entity.HasIndex(g => new { g.UserId, g.SessionId }).HasDatabaseName("IX_GapAnalyses_User_Session");
+            entity.HasOne(g => g.User).WithMany()
+                .HasForeignKey(g => g.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(g => g.Session).WithMany()
+                .HasForeignKey(g => g.SessionId).OnDelete(DeleteBehavior.Cascade);
+            entity.Property(g => g.ResultJson).HasColumnType("jsonb");
+            entity.Property(g => g.CreatedAt).HasDefaultValueSql("NOW()");
+            entity.Property(g => g.UpdatedAt).HasDefaultValueSql("NOW()");
         });
 
         modelBuilder.Entity<UserStudyPlan>(entity =>
         {
             entity.ToTable("UserStudyPlans");
-            entity.HasOne(p => p.User).WithOne()
-                .HasForeignKey<UserStudyPlan>(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(p => new { p.UserId, p.SessionId }).HasDatabaseName("IX_StudyPlans_User_Session");
+            entity.HasOne(p => p.User).WithMany()
+                .HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(p => p.Session).WithMany()
+                .HasForeignKey(p => p.SessionId).OnDelete(DeleteBehavior.Cascade);
             entity.Property(p => p.ResultJson).HasColumnType("jsonb");
             entity.Property(p => p.CreatedAt).HasDefaultValueSql("NOW()");
             entity.Property(p => p.UpdatedAt).HasDefaultValueSql("NOW()");

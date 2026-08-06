@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using BE.Services;
 using BE.ServiceContracts;
+using BE.DTOs.Chat;
 using BE.Common.Encryption;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -99,6 +100,16 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<IJobService, JobService>();
         services.AddScoped<IJobQueueService, JobQueueService>();
+        services.AddScoped<IChatSessionService, ChatSessionService>();
+        services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
+
+
+        var summarizationProvider = configuration["Summarization:Provider"] ?? "extractive";
+        if (summarizationProvider.Equals("external", StringComparison.OrdinalIgnoreCase))
+            services.AddScoped<ISummarizationService, SummarizationService>();
+        else
+            services.AddScoped<ISummarizationService, SummarizationService>();
+
 
         // Redis connection is shared across the process — a singleton.
         var redisConfig = configuration["Redis:Configuration"] ?? "redis:6379,abortConnect=false";

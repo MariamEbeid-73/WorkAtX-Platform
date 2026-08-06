@@ -9,8 +9,14 @@ namespace BE.Services;
 
 /// <summary>
 /// Generic job-progress Redis Stream consumer. Listens for progress events emitted
-/// by the AI Node across any processing job, updates the database state (Stage & Progress),
-/// and broadcasts the update via SignalR to connected clients.
+/// by the AI Node across any processing job (not gap_analysis-only — filtering is by
+/// Job.Status == "processing", never by JobType; see REDIS_STREAM_CONTRACT_ADDENDUM.md),
+/// updates the database state (Stage & Progress), and broadcasts the update via SignalR
+/// to connected clients.
+///
+/// `stage` is treated as opaque, ready-to-display text — the AI Node owns the exact
+/// copy ("Analyzing your resume…", "Forming your plan…") and this consumer never
+/// rewrites or translates it before it reaches the client.
 /// </summary>
 public class JobProgressStreamConsumer : BackgroundService
 {
@@ -164,9 +170,20 @@ public class JobProgressStreamConsumer : BackgroundService
             job.UpdatedAt = DateTimeOffset.UtcNow;
             await dbContext.SaveChangesAsync(stoppingToken);
 
+            // Same event name + field set as InternalAiController.BroadcastJobUpdateAsync
+            // (processing/completed/failed transitions) — the frontend has one handler
+            // for the whole job lifecycle regardless of which side triggered the push.
             await _hubContext.Clients.Group(JobStatusHub.GroupName(jobId)).SendAsync(
                 "job_status_update",
-                new { jobId, stage, progress, timestamp = DateTimeOffset.UtcNow },
+                new
+                {
+                    jobId,
+                    status = job.Status,
+                    stage,
+                    progress,
+                    error = (string?)null,
+                    timestamp = DateTimeOffset.UtcNow,
+                },
                 stoppingToken);
 
             await db.StreamAcknowledgeAsync(_streamName, _consumerGroup, entry.Id);

@@ -1,0 +1,35 @@
+.geni-chat-window {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 24px 16px;
+  box-sizing: border-box;
+  height: 100%;
+}
+
+.geni-chat-scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 4px 12px;
+}
+
+.geni-chat-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.geni-sample-btn {
+  border-radius: var(--radius-full);
+  border-color: var(--border-default);
+  color: var(--text-secondary);
+  font-size: 13px;
+}

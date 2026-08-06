@@ -1,3 +1,5 @@
+using BE.Models;
+
 namespace BE.ServiceContracts;
 
 /// <summary>

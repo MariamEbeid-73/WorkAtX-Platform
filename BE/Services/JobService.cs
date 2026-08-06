@@ -22,13 +22,14 @@ public class JobService : IJobService
         _db = db;
     }
 
-    public async Task<Job> CreateAsync(Guid userId, string jobType, object? payload)
+    public async Task<Job> CreateAsync(Guid userId, string jobType, object? payload, Guid? sessionId = null)
     {
         var job = new Job
         {
-            UserId  = userId,
+            UserId = userId,
+            SessionId = sessionId,
             JobType = jobType,
-            Status  = JobStatus.Queued,
+            Status = JobStatus.Queued,
             PayloadJson = payload is null
                 ? null
                 : JsonSerializer.Serialize(payload, JsonOptions),
