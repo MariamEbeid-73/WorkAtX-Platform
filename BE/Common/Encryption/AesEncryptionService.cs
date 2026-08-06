@@ -14,11 +14,24 @@ public class AesEncryptionService : IAesEncryptionService
     public AesEncryptionService(IConfiguration configuration)
     {
         var keyBase64 = configuration["Encryption:Key"]
+            ?? configuration["Encryption__Key"]
             ?? throw new InvalidOperationException("Encryption:Key is not configured.");
-        _key = Convert.FromBase64String(keyBase64);
+
+        // Clean whitespace, carriage returns (\r), or newlines (\n)
+        keyBase64 = keyBase64.Trim().Replace("\r", "").Replace("\n", "");
+
+        try
+        {
+            _key = Convert.FromBase64String(keyBase64);
+        }
+        catch (FormatException ex)
+        {
+            throw new InvalidOperationException(
+                $"Failed to parse Encryption:Key as Base64. Raw value length was {keyBase64.Length}. Value: '{keyBase64}'", ex);
+        }
 
         if (_key.Length != 32)
-            throw new InvalidOperationException("Encryption:Key must be exactly 32 bytes (256 bits) when base64-decoded.");
+            throw new InvalidOperationException($"Encryption:Key must be exactly 32 bytes (256 bits). Got {_key.Length} bytes.");
     }
 
     public string Encrypt(string plaintext)

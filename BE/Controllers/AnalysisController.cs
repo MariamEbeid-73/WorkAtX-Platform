@@ -44,6 +44,7 @@ public class AnalysisController : ControllerBase
     /// Creates and queues an Analysis 1 job for the current user, returning
     /// its jobId immediately. The worker reads the CV from MinIO (via s3Key)
     /// and conditionally scrapes GitHub/LinkedIn when URLs were provided.
+    /// Deduplicates in-flight jobs to prevent redundant tasks on page refresh.
     /// </summary>
     [HttpPost("start")]
     public async Task<IActionResult> Start()
@@ -51,6 +52,18 @@ public class AnalysisController : ControllerBase
         var user = await _userService.GetOrCreateUserAsync(
             _currentUserService.GetClerkUserId(),
             _currentUserService.GetEmail());
+
+        // 1. DEDUPLICATION GUARD: Re-use an existing in-flight Analysis 1 job if present
+        var existingInFlightJob = await _db.Jobs
+            .AsNoTracking()
+            .FirstOrDefaultAsync(j => j.UserId == user.Id
+                                   && j.JobType == JobType.Analysis1
+                                   && (j.Status == JobStatus.Queued || j.Status == JobStatus.Processing));
+
+        if (existingInFlightJob != null)
+        {
+            return Ok(new { jobId = existingInFlightJob.Id });
+        }
 
         // The onboarding wizard requires a confirmed resume before this is called.
         var resume = await _db.ResumeFiles
