@@ -1,19 +1,18 @@
-import { Card, Button, Flex, Typography, Tag } from 'antd';
-import { LinkedinOutlined, LinkOutlined, CheckCircleFilled } from '@ant-design/icons';
-import type { ConnectedProvider } from '../../types/oauth';
-import { initiateOAuth } from '../../services/oauthService';
-import { useAuth } from '@clerk/react';
+import { Card, Flex, Typography, Tag } from 'antd';
+import { LinkedinOutlined, CheckCircleFilled } from '@ant-design/icons';
+import { LinkedInUrlField } from '../LinkedInUrlField';
 
 const { Text, Title } = Typography;
 
 interface LinkedInIdentityCardProps {
-  connection: ConnectedProvider | null;
+  /** Saved LinkedIn profile URL, or null if none is set. */
+  linkedinUrl: string | null;
   isLoading: boolean;
+  onSaved: (url: string | null) => void;
 }
 
-export function LinkedInIdentityCard({ connection, isLoading }: LinkedInIdentityCardProps) {
-  const { getToken } = useAuth();
-  const isLinked = !!connection;
+export function LinkedInIdentityCard({ linkedinUrl, isLoading, onSaved }: LinkedInIdentityCardProps) {
+  const isLinked = !!linkedinUrl;
 
   return (
     <Card
@@ -74,55 +73,21 @@ export function LinkedInIdentityCard({ connection, isLoading }: LinkedInIdentity
                     fontSize: 11,
                   }}
                 >
-                  Connected
+                  Saved
                 </Tag>
               )}
             </Flex>
 
-            <Text style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-              {isLinked
-                ? connection.username
-                  ? `Connected as @${connection.username}`
-                  : `Connected · linked ${new Date(connection.connectedAt).toLocaleDateString()}`
-                : 'Link your LinkedIn to import work history and skills'}
-            </Text>
+            {!isLinked && (
+              <Text style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                Add your LinkedIn link so our AI can factor it into your analysis
+              </Text>
+            )}
           </Flex>
         </Flex>
 
-        {/* Right: action button */}
-        {!isLinked ? (
-          <Button
-            type="default"
-            icon={<LinkedinOutlined />}
-            onClick={async () => {
-              const token = await getToken();
-              if (token) await initiateOAuth('linkedin', token, true);
-            }}
-            style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.14)',
-              color: 'var(--text-primary)',
-              borderRadius: 12,
-              fontWeight: 600,
-              height: 40,
-              paddingInline: 20,
-            }}
-          >
-            Connect LinkedIn
-          </Button>
-        ) : (
-          <Button
-            type="text"
-            icon={<LinkOutlined />}
-            style={{ color: 'var(--text-secondary)', borderRadius: 10 }}
-            onClick={async () => {
-              const token = await getToken();
-              if (token) await initiateOAuth('linkedin', token, true);
-            }}
-          >
-            Reconnect
-          </Button>
-        )}
+        {/* Right: the field itself (shows a chip + Edit when saved, an input + Save when not) */}
+        <LinkedInUrlField value={linkedinUrl} isLoading={isLoading} onSaved={onSaved} compact />
       </Flex>
     </Card>
   );

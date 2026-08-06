@@ -10,8 +10,9 @@ import {
   FileTextOutlined, CheckCircleFilled, LoadingOutlined,
 } from '@ant-design/icons';
 import { createUploadIntent, uploadToMinIO, confirmUpload, listResumes } from '../services/resumeService';
-import { initiateOAuth } from '../services/oauthService';
-import { getConnections } from '../services/oauthService';
+import { initiateOAuth, getConnections } from '../services/oauthService';
+import { getProfile } from '../services/profileService';
+import { LinkedInUrlField } from './LinkedInUrlField';
 import type { ConnectedProvider } from '../types/oauth';
 
 const { Title, Text } = Typography;
@@ -84,6 +85,7 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
   const [checkingResume, setCheckingResume]     = useState(true);
   const [connections, setConnections] = useState<ConnectedProvider[]>([]);
   const [connectionsLoading, setConnectionsLoading] = useState(true);
+  const [linkedinUrl, setLinkedinUrl] = useState<string | null>(null);
   const [msgApi, ctx]                 = message.useMessage();
 
   const steps = [
@@ -107,10 +109,14 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
         const resumes = await listResumes(token);
         if (!cancelled) setAlreadyHasResume(resumes.length > 0);
 
-        // Load connections
+        // Load connections (GitHub OAuth status)
         setConnectionsLoading(true);
         const conns = await getConnections(token);
         if (!cancelled) setConnections(conns);
+
+        // Load saved LinkedIn URL (text field, not OAuth)
+        const profileRes = await getProfile(token);
+        if (!cancelled) setLinkedinUrl(profileRes.data.socialLinks.linkedin ?? null);
       } catch {
         // silently degrade
       } finally {
@@ -152,7 +158,6 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
   }, [open, getToken]);
 
   const githubConn   = connections.find(c => c.provider === 'github')   ?? null;
-  const linkedinConn = connections.find(c => c.provider === 'linkedin')  ?? null;
 
   const handleNext = () => {
     if (currentStep === 0 && !alreadyHasResume && !resumeFile) {
@@ -392,26 +397,26 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
             )}
           </Flex>
 
-          {/* LinkedIn */}
+          {/* LinkedIn — plain URL field, no OAuth. The AI worker only ever
+              needs the profile URL to scrape; it never uses an OAuth token. */}
           <Flex
-            align="center"
-            justify="space-between"
-            gap={16}
+            vertical
+            gap={12}
             style={{
               padding: '16px 18px',
               borderRadius: 14,
-              background: linkedinConn ? 'rgba(0,119,181,0.06)' : 'rgba(255,255,255,0.03)',
-              border: `1px solid ${linkedinConn ? 'rgba(0,119,181,0.25)' : 'rgba(255,255,255,0.10)'}`,
+              background: linkedinUrl ? 'rgba(0,119,181,0.06)' : 'rgba(255,255,255,0.03)',
+              border: `1px solid ${linkedinUrl ? 'rgba(0,119,181,0.25)' : 'rgba(255,255,255,0.10)'}`,
             }}
           >
             <Flex align="center" gap={12}>
               <div style={{
                 width: 40, height: 40, borderRadius: 11, flexShrink: 0,
-                background: linkedinConn ? 'rgba(0,119,181,0.12)' : 'rgba(255,255,255,0.06)',
-                border: `1px solid ${linkedinConn ? 'rgba(0,119,181,0.30)' : 'rgba(255,255,255,0.12)'}`,
+                background: linkedinUrl ? 'rgba(0,119,181,0.12)' : 'rgba(255,255,255,0.06)',
+                border: `1px solid ${linkedinUrl ? 'rgba(0,119,181,0.30)' : 'rgba(255,255,255,0.12)'}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                <LinkedinOutlined style={{ fontSize: 20, color: linkedinConn ? '#0077B5' : 'var(--text-secondary)' }} />
+                <LinkedinOutlined style={{ fontSize: 20, color: linkedinUrl ? '#0077B5' : 'var(--text-secondary)' }} />
               </div>
               <Flex vertical gap={2}>
                 <Flex align="center" gap={6}>
@@ -424,44 +429,20 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
                   }}>Optional</Tag>
                 </Flex>
                 <Text style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                  {linkedinConn
-                    ? linkedinConn.username ? `@${linkedinConn.username}` : 'Connected'
-                    : 'Import work history and skills'}
+                  Paste your profile link so we can factor it into your analysis
                 </Text>
               </Flex>
             </Flex>
-            {linkedinConn ? (
-              <Tag
-                icon={<CheckCircleFilled />}
-                style={{
-                  background: 'rgba(0,119,181,0.12)',
-                  border: '1px solid rgba(0,119,181,0.30)',
-                  color: '#00A0DC', borderRadius: 8, fontSize: 12,
-                }}
-              >
-                Connected
-              </Tag>
-            ) : (
-              <Button
-                icon={<LinkedinOutlined />}
-                onClick={async () => {
-                  const token = await getToken();
-                  if (token) await initiateOAuth('linkedin', token, true);
-                }}
-                style={{
-                  background: 'rgba(0,119,181,0.08)',
-                  border: '1px solid rgba(0,119,181,0.20)',
-                  color: '#00A0DC',
-                  borderRadius: 10, fontWeight: 600, height: 36,
-                }}
-              >
-                Connect
-              </Button>
-            )}
+
+            <LinkedInUrlField
+              value={linkedinUrl}
+              isLoading={connectionsLoading}
+              onSaved={setLinkedinUrl}
+            />
           </Flex>
 
           <Text style={{ fontSize: 12, color: 'var(--text-tertiary)', textAlign: 'center' }}>
-            You'll be redirected to the provider and brought back here. You can skip LinkedIn for now.
+            You can skip LinkedIn for now and add it later from Settings.
           </Text>
         </Flex>
       )}
@@ -503,8 +484,8 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
           {
             icon: <LinkedinOutlined />,
             label: 'LinkedIn',
-            value: linkedinConn
-              ? linkedinConn.username ? `@${linkedinConn.username}` : 'Connected'
+            value: linkedinUrl
+              ? linkedinUrl.replace(/^https?:\/\/(www\.)?/, '')
               : 'Skipped',
             color: '#0077B5',
           },

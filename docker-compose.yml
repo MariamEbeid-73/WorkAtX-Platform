@@ -69,9 +69,6 @@ services:
       OAuth__GitHub__ClientId: "${GITHUB_CLIENT_ID:-Ov23liacWpZf9ZDCpiGt}"
       OAuth__GitHub__ClientSecret: "${GITHUB_CLIENT_SECRET:-47aaaa6b4d8230ecd1d6f1306ce8b7730376386b}"
       OAuth__GitHub__RedirectUri: "http://localhost:5000/oauth/github/callback"
-      OAuth__LinkedIn__ClientId: "${LINKEDIN_CLIENT_ID:-784cl32dcq4gfj}"
-      OAuth__LinkedIn__ClientSecret: "${LINKEDIN_CLIENT_SECRET:-WPL_AP1.iBx2BuHYYljtPDIR.+zRkJQ==}"
-      OAuth__LinkedIn__RedirectUri: "http://localhost:5000/oauth/linkedin/callback"
       OAuth__FrontendCallbackUrl: "${FRONTEND_URL:-http://localhost:4200}/oauth-return"
       Encryption__Key: "${ENCRYPTION_KEY:-2JGGQQujI4auE8XfUHisIVNJ3AGayFN4ygljCRFmgms=}"
       Redis__Configuration: "redis:6379,abortConnect=false"
@@ -79,9 +76,9 @@ services:
       Redis__CeleryQueue: "${CELERY_QUEUE:-celery}"
       ServiceAuth__Token: "${SERVICE_AUTH_TOKEN:-dev-service-token}"
       Summarization__Provider: "${SUMMARIZATION_PROVIDER:-extractive}"
-      Summarization__ApiUrl: "${SUMMARIZATION_API_URL:-https://api.groq.com/openai/v1/chat/completions}"
+      Summarization__ApiUrl: "${SUMMARIZATION_API_URL:-}"
       Summarization__ApiKey: "${SUMMARIZATION_API_KEY:-}"
-      Summarization__Model: "${SUMMARIZATION_MODEL:-llama-3.3-70b-versatile}"
+      Summarization__Model: "${SUMMARIZATION_MODEL:-gpt-4o-mini}"
     ports:
       - "5000:5000"
     depends_on:

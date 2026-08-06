@@ -13,6 +13,7 @@ import { getProfile, updateProfile } from '../../services/profileService';
 import { createUploadIntent, uploadToMinIO, confirmUpload, listResumes } from '../../services/resumeService';
 import { useAuth } from '@clerk/react';
 import type { ConnectedProvider } from '../../types/oauth';
+import { LinkedInUrlField } from '../LinkedInUrlField';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -51,12 +52,12 @@ export function CompleteProfileModal({ open, onClose }: CompleteProfileModalProp
   const [existingResumeName, setExistingResumeName] = useState('');
   const [uploading, setUploading] = useState(false);
   const [connections, setConnections] = useState<ConnectedProvider[]>([]);
+  const [linkedinUrl, setLinkedinUrl] = useState<string | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msgApi, ctx] = message.useMessage();
 
   const githubConn = connections.find(c => c.provider === 'github') ?? null;
-  const linkedinConn = connections.find(c => c.provider === 'linkedin') ?? null;
 
   useEffect(() => {
     if (!open) return;
@@ -75,6 +76,7 @@ export function CompleteProfileModal({ open, onClose }: CompleteProfileModalProp
         ]);
         const p = profileRes.data;
         setConnections(conns);
+        setLinkedinUrl(p.socialLinks.linkedin ?? null);
         if (resumes.length > 0) {
           setAlreadyHasResume(true);
           setExistingResumeName(resumes[0].fileName);
@@ -312,20 +314,22 @@ export function CompleteProfileModal({ open, onClose }: CompleteProfileModalProp
                 )}
               </Flex>
 
-              {/* LinkedIn */}
+              {/* LinkedIn — plain URL field; the AI worker only needs the
+                  profile link to scrape, never an OAuth token. */}
               <Flex
                 align="center"
                 justify="space-between"
                 gap={12}
+                wrap="wrap"
                 style={{
                   padding: '14px 16px',
                   borderRadius: 12,
-                  background: linkedinConn ? 'rgba(0,119,181,0.06)' : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${linkedinConn ? 'rgba(0,119,181,0.25)' : 'rgba(255,255,255,0.10)'}`,
+                  background: linkedinUrl ? 'rgba(0,119,181,0.06)' : 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${linkedinUrl ? 'rgba(0,119,181,0.25)' : 'rgba(255,255,255,0.10)'}`,
                 }}
               >
                 <Flex align="center" gap={10}>
-                  <LinkedinOutlined style={{ fontSize: 18, color: linkedinConn ? '#0077B5' : 'var(--text-secondary)' }} />
+                  <LinkedinOutlined style={{ fontSize: 18, color: linkedinUrl ? '#0077B5' : 'var(--text-secondary)' }} />
                   <Flex vertical gap={1}>
                     <Flex align="center" gap={6}>
                       <Text style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>LinkedIn</Text>
@@ -336,41 +340,15 @@ export function CompleteProfileModal({ open, onClose }: CompleteProfileModalProp
                         color: 'var(--text-tertiary)',
                       }}>Optional</Tag>
                     </Flex>
-                    <Text style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                      {linkedinConn
-                        ? linkedinConn.username ? `@${linkedinConn.username}` : 'Connected'
-                        : 'Import work history and skills'}
-                    </Text>
+                    {!linkedinUrl && (
+                      <Text style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                        Paste your profile link
+                      </Text>
+                    )}
                   </Flex>
                 </Flex>
-                {linkedinConn ? (
-                  <Tag
-                    icon={<CheckCircleFilled />}
-                    style={{
-                      background: 'rgba(0,119,181,0.12)',
-                      border: '1px solid rgba(0,119,181,0.30)',
-                      color: '#00A0DC', borderRadius: 8, fontSize: 12,
-                    }}
-                  >
-                    Connected
-                  </Tag>
-                ) : (
-                  <Button
-                    icon={<LinkedinOutlined />}
-                    onClick={async () => {
-                      const token = await getToken();
-                      if (token) await initiateOAuth('linkedin', token, true);
-                    }}
-                    style={{
-                      background: 'rgba(0,119,181,0.08)',
-                      border: '1px solid rgba(0,119,181,0.20)',
-                      color: '#00A0DC',
-                      borderRadius: 10, fontWeight: 600, height: 36,
-                    }}
-                  >
-                    Connect
-                  </Button>
-                )}
+
+                <LinkedInUrlField value={linkedinUrl} onSaved={setLinkedinUrl} compact />
               </Flex>
             </Flex>
 

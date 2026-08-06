@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using BE.Common.Exceptions;
 using BE.Data;
 using BE.DTOs.Profile;
@@ -65,6 +66,9 @@ public class ProfileService : IProfileService
         if (request.ContactEmail      is not null) user.ContactEmail       = request.ContactEmail;
         if (request.ContactPhone      is not null) user.ContactPhone       = request.ContactPhone;
 
+        if (request.SocialLinks?.LinkedIn is not null)
+            user.LinkedinUrl = NormalizeLinkedInUrl(request.SocialLinks.LinkedIn);
+
         user.ProfileCompletionPct = CalculateCompletionPct(user);
 
         await _db.SaveChangesAsync();
@@ -100,6 +104,51 @@ public class ProfileService : IProfileService
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    private static readonly Regex LinkedInHandlePattern = new(
+        @"^[a-zA-Z0-9\-_%]{3,100}$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Accepts a full LinkedIn URL ("https://www.linkedin.com/in/jane-doe"),
+    /// a bare "linkedin.com/in/jane-doe", or just a handle ("jane-doe") and
+    /// normalizes all three to a canonical "https://www.linkedin.com/in/{handle}"
+    /// URL. Mirrors Worker/app/ai_client.py's format_linkedin_url so the value
+    /// the worker sends to the AI service and the value we store agree.
+    /// An empty string clears the field (returns null). Throws BadRequestException
+    /// for anything that doesn't look like a LinkedIn profile.
+    /// </summary>
+    private static string? NormalizeLinkedInUrl(string raw)
+    {
+        var trimmed = raw.Trim();
+        if (trimmed.Length == 0) return null;
+
+        string handle;
+        if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("linkedin.com", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("www.linkedin.com", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!Uri.TryCreate(
+                    trimmed.Contains("://") ? trimmed : $"https://{trimmed}",
+                    UriKind.Absolute, out var uri) ||
+                !uri.Host.EndsWith("linkedin.com", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new BadRequestException("That doesn't look like a linkedin.com profile URL.");
+            }
+
+            handle = uri.AbsolutePath.Trim('/').Split('/').LastOrDefault() ?? "";
+        }
+        else
+        {
+            handle = trimmed.Trim('/');
+        }
+
+        if (!LinkedInHandlePattern.IsMatch(handle))
+            throw new BadRequestException(
+                "Enter your LinkedIn profile URL or username, e.g. linkedin.com/in/jane-doe.");
+
+        return $"https://www.linkedin.com/in/{handle}";
+    }
 
     /// <summary>
     /// Calculates how complete the user's profile is (0-100%).

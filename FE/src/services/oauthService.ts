@@ -2,7 +2,7 @@ import { api } from './api';
 import type { ConnectedProvider } from '../types/oauth';
 
 export async function initiateOAuth(
-  provider: 'github' | 'linkedin',
+  provider: 'github',
   token: string,
   usePopup: boolean = false,
 ): Promise<void> {

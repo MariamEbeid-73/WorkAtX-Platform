@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
 import { Flex, Typography, Alert, Skeleton } from "antd";
-import { useUser, useAuth } from "@clerk/react";
+import { useUser } from "@clerk/react";
 import { UserHeaderCard } from "../components/dashboard/UserHeaderCard";
 import { DeveloperIdentityCard } from "../components/dashboard/DeveloperIdentityCard";
 import { LinkedInIdentityCard } from "../components/dashboard/LinkedInIdentityCard";
@@ -12,14 +12,15 @@ import {
   useScoresQuery,
   useGitHubIdentityQuery,
 } from "../hooks/useProfile";
-import { getConnections } from "../services/oauthService";
-import type { ConnectedProvider } from "../types/oauth";
+// LinkedIn is a plain profile field (see LinkedInUrlField) — no OAuth needed.
+// GitHub's "connected" state comes from useGitHubIdentityQuery (a live
+// /api/github/verify call), so we don't need the raw /oauth/connections
+// list here at all.
 
 const { Title, Text } = Typography;
 
 export function Dashboard() {
   const { user } = useUser();
-  const { getToken } = useAuth();
 
   // Data hooks (gracefully degrade when backend is offline)
   const {
@@ -39,38 +40,13 @@ export function Dashboard() {
     refetch: refetchIdentity,
   } = useGitHubIdentityQuery();
 
-  // OAuth connections (GitHub + LinkedIn)
-  const [connections, setConnections] = useState<ConnectedProvider[]>([]);
-  const [connectionsLoading, setConnectionsLoading] = useState(true);
-
-  const loadConnections = useCallback(async () => {
-    try {
-      setConnectionsLoading(true);
-      const token = await getToken();
-      if (token) {
-        const data = await getConnections(token);
-        setConnections(data);
-      }
-    } catch {
-      // silently ignore — cards degrade gracefully
-    } finally {
-      setConnectionsLoading(false);
-    }
-  }, [getToken]);
-
   const refreshAll = useCallback(() => {
     refetchProfile();
     refetchScores();
     refetchIdentity();
-    loadConnections();
-  }, [refetchProfile, refetchScores, refetchIdentity, loadConnections]);
+  }, [refetchProfile, refetchScores, refetchIdentity]);
 
-  useEffect(() => {
-    loadConnections();
-  }, [loadConnections]);
-
-  const linkedInConnection =
-    connections.find((c) => c.provider === "linkedin") ?? null;
+  const linkedinUrl = profile?.socialLinks.linkedin ?? null;
 
   const greeting = () => {
     const h = new Date().getHours();
@@ -172,8 +148,9 @@ export function Dashboard() {
         {/* 3. LinkedIn Identity Card */}
         <div className="animate-fade-in" style={{ animationDelay: "140ms" }}>
           <LinkedInIdentityCard
-            connection={linkedInConnection}
-            isLoading={connectionsLoading}
+            linkedinUrl={linkedinUrl}
+            isLoading={profileLoading}
+            onSaved={() => refetchProfile()}
           />
         </div>
 

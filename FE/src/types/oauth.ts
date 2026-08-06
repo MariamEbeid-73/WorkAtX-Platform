@@ -1,5 +1,5 @@
 export interface ConnectedProvider {
-    provider: 'github' | 'linkedin';
+    provider: 'github';
     username: string | null;
     connectedAt: string; // ISO date string
 }

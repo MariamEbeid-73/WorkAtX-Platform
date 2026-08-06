@@ -26,9 +26,17 @@ public record UserProfileResponse(
     DateTimeOffset UpdatedAt
 );
 
+/// <summary>
+/// Property names deliberately use a single leading capital (Github/Linkedin,
+/// not GitHub/LinkedIn) so the global CamelCase JSON policy (Program.cs)
+/// produces "github"/"linkedin" — matching FE's SocialLinks type exactly.
+/// "GitHub"/"LinkedIn" would serialize as "gitHub"/"linkedIn" (capital
+/// letter preserved mid-word), silently breaking every FE consumer of
+/// profile.socialLinks.
+/// </summary>
 public record SocialLinksDto(
-    string? GitHub,
-    string? LinkedIn,
+    string? Github,
+    string? Linkedin,
     string? Portfolio,
     string? Twitter
 );
