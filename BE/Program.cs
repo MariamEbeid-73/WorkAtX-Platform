@@ -50,6 +50,7 @@ app.UseSwaggerUI();
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<BE.Common.Middleware.CurrentUserCachingMiddleware>();   
 
 app.MapControllers();
 app.MapHub<JobStatusHub>("/hubs/job-status");

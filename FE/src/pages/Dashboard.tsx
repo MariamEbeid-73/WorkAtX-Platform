@@ -1,17 +1,19 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Flex, Typography, Alert, Skeleton } from 'antd';
-import { useUser, useAuth } from '@clerk/react';
-import { UserHeaderCard }        from '../components/dashboard/UserHeaderCard';
-import { DeveloperIdentityCard } from '../components/dashboard/DeveloperIdentityCard';
-import { LinkedInIdentityCard }  from '../components/dashboard/LinkedInIdentityCard';
-import { ScoreBreakdownCard }    from '../components/dashboard/ScoreBreakdownCard';
-import { FeedbackButton }        from '../components/dashboard/FeedbackButton';
-import { OnboardingModal }       from '../components/OnboardingModal';
-import { FullScreenLoader }      from '../components/FullScreenLoader';
-import { useProfileQuery, useScoresQuery, useGitHubIdentityQuery } from '../hooks/useProfile';
-import { getConnections } from '../services/oauthService';
-import { listResumes } from '../services/resumeService';
-import type { ConnectedProvider } from '../types/oauth';
+import { useState, useEffect, useCallback } from "react";
+import { Flex, Typography, Alert, Skeleton } from "antd";
+import { useUser, useAuth } from "@clerk/react";
+import { UserHeaderCard } from "../components/dashboard/UserHeaderCard";
+import { DeveloperIdentityCard } from "../components/dashboard/DeveloperIdentityCard";
+import { LinkedInIdentityCard } from "../components/dashboard/LinkedInIdentityCard";
+import { ScoreBreakdownCard } from "../components/dashboard/ScoreBreakdownCard";
+import { FeedbackButton } from "../components/dashboard/FeedbackButton";
+import { FullScreenLoader } from "../components/FullScreenLoader";
+import {
+  useProfileQuery,
+  useScoresQuery,
+  useGitHubIdentityQuery,
+} from "../hooks/useProfile";
+import { getConnections } from "../services/oauthService";
+import type { ConnectedProvider } from "../types/oauth";
 
 const { Title, Text } = Typography;
 
@@ -20,9 +22,22 @@ export function Dashboard() {
   const { getToken } = useAuth();
 
   // Data hooks (gracefully degrade when backend is offline)
-  const { data: profile,  isLoading: profileLoading,  error: profileError,  refetch: refetchProfile  } = useProfileQuery();
-  const { data: scores,   isLoading: scoresLoading,                           refetch: refetchScores   } = useScoresQuery();
-  const { data: identity, isLoading: identityLoading, refetch: refetchIdentity } = useGitHubIdentityQuery();
+  const {
+    data: profile,
+    isLoading: profileLoading,
+    error: profileError,
+    refetch: refetchProfile,
+  } = useProfileQuery();
+  const {
+    data: scores,
+    isLoading: scoresLoading,
+    refetch: refetchScores,
+  } = useScoresQuery();
+  const {
+    data: identity,
+    isLoading: identityLoading,
+    refetch: refetchIdentity,
+  } = useGitHubIdentityQuery();
 
   // OAuth connections (GitHub + LinkedIn)
   const [connections, setConnections] = useState<ConnectedProvider[]>([]);
@@ -50,59 +65,18 @@ export function Dashboard() {
     loadConnections();
   }, [refetchProfile, refetchScores, refetchIdentity, loadConnections]);
 
-  const handleOnboardingComplete = () => {
-    setShowOnboarding(false);
-    refreshAll();
-  };
-
-  useEffect(() => { loadConnections(); }, [loadConnections]);
-
-  const linkedInConnection = connections.find(c => c.provider === 'linkedin') ?? null;
-
-  const [showOnboarding, setShowOnboarding] = useState(false);
-  const [onboardingChecked, setOnboardingChecked] = useState(false);
-
   useEffect(() => {
-    if (onboardingChecked) return;
-    if (profileLoading || connectionsLoading) return;
-    if (profileError) {
-      setOnboardingChecked(true);
-      return;
-    }
+    loadConnections();
+  }, [loadConnections]);
 
-    const hasGithub = !!(profile?.socialLinks?.github || connections.find(c => c.provider === 'github'));
-    const hasLinkedin = !!connections.find(c => c.provider === 'linkedin');
-
-    const checkOnboarding = async () => {
-      try {
-        const token = await getToken();
-        if (!token) {
-          setOnboardingChecked(true);
-          return;
-        }
-        const resumes = await listResumes(token);
-        const hasResume = resumes.length > 0;
-
-        if (!hasGithub && !hasLinkedin && !hasResume) {
-          setShowOnboarding(true);
-        }
-      } catch {
-        if (!hasGithub && !hasLinkedin) {
-          setShowOnboarding(true);
-        }
-      } finally {
-        setOnboardingChecked(true);
-      }
-    };
-
-    checkOnboarding();
-  }, [profile, profileLoading, profileError, connections, connectionsLoading, getToken, onboardingChecked]);
+  const linkedInConnection =
+    connections.find((c) => c.provider === "linkedin") ?? null;
 
   const greeting = () => {
     const h = new Date().getHours();
-    if (h < 12) return 'Good morning';
-    if (h < 17) return 'Good afternoon';
-    return 'Good evening';
+    if (h < 12) return "Good morning";
+    if (h < 17) return "Good afternoon";
+    return "Good evening";
   };
 
   if (profileLoading) {
@@ -110,18 +84,38 @@ export function Dashboard() {
   }
 
   return (
-    <div style={{ animation: 'fadeIn 0.5s ease both' }}>
+    <div style={{ animation: "fadeIn 0.5s ease both" }}>
       {/* ── Page Header ───────────────────────────────────────────────────── */}
-      <Flex align="baseline" justify="space-between" wrap="wrap" gap={8} style={{ marginBottom: 28 }}>
+      <Flex
+        align="baseline"
+        justify="space-between"
+        wrap="wrap"
+        gap={8}
+        style={{ marginBottom: 28 }}
+      >
         <Flex vertical gap={4}>
-          <Text style={{ fontSize: 13, color: 'var(--text-tertiary)', fontWeight: 500, letterSpacing: '0.02em' }}>
-            {greeting()}, {user?.firstName || 'Developer'} 👋
+          <Text
+            style={{
+              fontSize: 13,
+              color: "var(--text-tertiary)",
+              fontWeight: 500,
+              letterSpacing: "0.02em",
+            }}
+          >
+            {greeting()}, {user?.firstName || "Developer"} 👋
           </Text>
-          <Title level={3} style={{ margin: 0, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+          <Title
+            level={3}
+            style={{
+              margin: 0,
+              color: "var(--text-primary)",
+              letterSpacing: "-0.02em",
+            }}
+          >
             Developer Profile
           </Title>
         </Flex>
-        <Text style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+        <Text style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
           Last updated · just now
         </Text>
       </Flex>
@@ -135,8 +129,8 @@ export function Dashboard() {
           description="The API is unreachable — showing demo data. Connect your backend to see live profile data."
           style={{
             marginBottom: 20,
-            background: 'rgba(59,130,246,0.08)',
-            border: '1px solid rgba(59,130,246,0.20)',
+            background: "rgba(59,130,246,0.08)",
+            border: "1px solid rgba(59,130,246,0.20)",
             borderRadius: 12,
           }}
           closable
@@ -145,18 +139,30 @@ export function Dashboard() {
 
       {/* ── Card Stack ────────────────────────────────────────────────────── */}
       <Flex vertical gap={20}>
-
         {/* 1. User Header Card */}
         {profileLoading ? (
-          <Skeleton active paragraph={{ rows: 4 }} style={{ padding: 24, borderRadius: 20, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }} />
+          <Skeleton
+            active
+            paragraph={{ rows: 4 }}
+            style={{
+              padding: 24,
+              borderRadius: 20,
+              background: "rgba(255,255,255,0.02)",
+              border: "1px solid rgba(255,255,255,0.06)",
+            }}
+          />
         ) : (
-          <div className="animate-fade-in" style={{ animationDelay: '0ms' }}>
-            <UserHeaderCard profile={profile} isLoading={false} onProfileUpdate={refreshAll} />
+          <div className="animate-fade-in" style={{ animationDelay: "0ms" }}>
+            <UserHeaderCard
+              profile={profile}
+              isLoading={false}
+              onProfileUpdate={refreshAll}
+            />
           </div>
         )}
 
         {/* 2. Developer Identity Card (GitHub) */}
-        <div className="animate-fade-in" style={{ animationDelay: '80ms' }}>
+        <div className="animate-fade-in" style={{ animationDelay: "80ms" }}>
           <DeveloperIdentityCard
             identity={identity}
             isLoading={identityLoading}
@@ -164,7 +170,7 @@ export function Dashboard() {
         </div>
 
         {/* 3. LinkedIn Identity Card */}
-        <div className="animate-fade-in" style={{ animationDelay: '140ms' }}>
+        <div className="animate-fade-in" style={{ animationDelay: "140ms" }}>
           <LinkedInIdentityCard
             connection={linkedInConnection}
             isLoading={connectionsLoading}
@@ -172,20 +178,13 @@ export function Dashboard() {
         </div>
 
         {/* 4. Score Breakdown / Performance Hub */}
-        <div className="animate-fade-in" style={{ animationDelay: '200ms' }}>
+        <div className="animate-fade-in" style={{ animationDelay: "200ms" }}>
           <ScoreBreakdownCard scores={scores} isLoading={scoresLoading} />
         </div>
-
       </Flex>
 
       {/* ── Floating Feedback Button ───────────────────────────────────────── */}
       <FeedbackButton />
-
-      {/* Initial onboarding wizard */}
-      <OnboardingModal 
-        open={showOnboarding} 
-        onComplete={handleOnboardingComplete} 
-      />
     </div>
   );
 }

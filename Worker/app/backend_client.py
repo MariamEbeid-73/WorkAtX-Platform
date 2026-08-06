@@ -36,13 +36,6 @@ def submit_job_result(job_id: str, status: str, result_json: str = None, error: 
     response.raise_for_status()
     return response.json()
 
-def get_user_context(user_id: str) -> dict:
-    response = requests.get(f"{BACKEND_BASE_URL}/api/internal/ai/context/{user_id}", headers=HEADERS)
-    if response.status_code == 404:
-        return None
-    response.raise_for_status()
-    return response.json()
-
 
 def submit_profile_scores(user_id: str, scores_data: dict):
     url = f"{BACKEND_BASE_URL}/api/internal/ai/profile-scores/{user_id}"

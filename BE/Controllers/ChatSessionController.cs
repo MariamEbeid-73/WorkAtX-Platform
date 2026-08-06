@@ -1,4 +1,5 @@
 ﻿using BE.DTOs.Chat;
+using BE.Models;
 using BE.ServiceContracts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -64,6 +65,7 @@ public class ChatSessionController : ControllerBase
         return NoContent();
     }
 
-    private Task<Models.User> CurrentUserAsync() =>
-        _userService.GetOrCreateUserAsync(_currentUserService.GetClerkUserId(), _currentUserService.GetEmail());
+    private async Task<User> CurrentUserAsync() =>
+        (HttpContext.Items["CurrentUser"] as User)
+        ?? await _userService.GetOrCreateUserAsync(_currentUserService.GetClerkUserId(), _currentUserService.GetEmail());
 }

@@ -1,20 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAuth } from '@clerk/react';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "@clerk/react";
 import {
   listChatSessions,
   getSessionMessages,
   sendChatMessage,
   renameChatSession,
   archiveChatSession,
-  pollJobUntilDone,
-} from '../services/chatService';
-import type { ChatSessionDto, UiChatMessage } from '../types/chat';
+  waitForJobCompletion,
+} from "../services/chatService";
+import type { ChatSessionDto, UiChatMessage } from "../types/chat";
 
 function toUiMessage(m: {
   id: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
-  responseType: UiChatMessage['responseType'];
+  responseType: UiChatMessage["responseType"];
   jobId: string | null;
   createdAt: string;
 }): UiChatMessage {
@@ -32,7 +32,7 @@ function friendlyError(err: unknown): string {
     }
     return err.message;
   }
-  return 'Something went wrong.';
+  return "Something went wrong.";
 }
 
 export function useChat() {
@@ -48,6 +48,7 @@ export function useChat() {
 
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [pendingStage, setPendingStage] = useState<string | null>(null);
 
   // Guards against a stale poll loop overwriting state after the user
   // switches sessions mid-request.
@@ -60,7 +61,7 @@ export function useChat() {
     setSessionsError(null);
     try {
       const token = await getToken();
-      if (!token) throw new Error('Not authenticated.');
+      if (!token) throw new Error("Not authenticated.");
       const list = await listChatSessions(token);
       setSessions(list);
     } catch (err) {
@@ -75,7 +76,7 @@ export function useChat() {
       setMessagesLoading(true);
       try {
         const token = await getToken();
-        if (!token) throw new Error('Not authenticated.');
+        if (!token) throw new Error("Not authenticated.");
         const list = await getSessionMessages(token, sessionId);
         // Only apply if the user hasn't since navigated to a different session.
         if (activeSessionRef.current === sessionId) {
@@ -121,7 +122,9 @@ export function useChat() {
       const token = await getToken();
       if (!token) return;
       const updated = await renameChatSession(token, sessionId, title);
-      setSessions((prev) => prev.map((s) => (s.id === sessionId ? updated : s)));
+      setSessions((prev) =>
+        prev.map((s) => (s.id === sessionId ? updated : s)),
+      );
     },
     [getToken],
   );
@@ -148,7 +151,7 @@ export function useChat() {
       setSendError(null);
       const token = await getToken();
       if (!token) {
-        setSendError('Not authenticated.');
+        setSendError("Not authenticated.");
         return;
       }
 
@@ -157,7 +160,7 @@ export function useChat() {
       // Optimistic user bubble.
       const optimisticUser: UiChatMessage = {
         id: `local-${Date.now()}`,
-        role: 'user',
+        role: "user",
         content: trimmed,
         responseType: null,
         jobId: null,
@@ -165,8 +168,8 @@ export function useChat() {
       };
       const pendingAssistant: UiChatMessage = {
         id: `pending-${Date.now()}`,
-        role: 'assistant',
-        content: '',
+        role: "assistant",
+        content: "",
         responseType: null,
         jobId: null,
         createdAt: new Date().toISOString(),
@@ -181,7 +184,11 @@ export function useChat() {
       try {
         // sessionId is attached here so the backend routes this job's
         // context strictly to this session's SummaryText.
-        const { jobId, sessionId } = await sendChatMessage(token, trimmed, sessionIdAtSend);
+        const { jobId, sessionId } = await sendChatMessage(
+          token,
+          trimmed,
+          sessionIdAtSend,
+        );
 
         // A brand-new session was created server-side on this first message.
         if (!sessionIdAtSend) {
@@ -190,10 +197,15 @@ export function useChat() {
           refreshSessions();
         }
 
-        const finalStatus = await pollJobUntilDone(token, jobId, { signal: controller.signal });
+        const finalStatus = await waitForJobCompletion(getToken, token, jobId, {
+          signal: controller.signal,
+          onProgress: (u) => setPendingStage(u.stage),
+        });
 
-        if (finalStatus.status === 'failed') {
-          throw new Error(finalStatus.error ?? 'The assistant failed to respond.');
+        if (finalStatus.status === "failed") {
+          throw new Error(
+            finalStatus.error ?? "The assistant failed to respond.",
+          );
         }
 
         // Re-fetch the authoritative transcript (this also picks up the
@@ -204,13 +216,16 @@ export function useChat() {
         // Sidebar ordering/title can change after the first message.
         refreshSessions();
       } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
         setSendError(friendlyError(err));
         setMessages((prev) =>
-          prev.map((m) => (m.pending ? { ...m, pending: false, failed: true } : m)),
+          prev.map((m) =>
+            m.pending ? { ...m, pending: false, failed: true } : m,
+          ),
         );
       } finally {
         setIsSending(false);
+        setPendingStage(null);
       }
     },
     [getToken, isSending, loadMessages, refreshSessions],
@@ -225,6 +240,7 @@ export function useChat() {
     messagesLoading,
     isSending,
     sendError,
+    pendingStage,
     startNewChat,
     selectSession,
     renameSession,

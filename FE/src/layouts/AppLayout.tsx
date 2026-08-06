@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { useUser, useClerk } from "@clerk/react";
+import { useUser, useClerk, useAuth } from "@clerk/react";
 import { Layout, Menu, Button, Tooltip, Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
@@ -16,6 +16,8 @@ import {
   AudioOutlined,
   FileSearchOutlined,
 } from "@ant-design/icons";
+import { listResumes } from "../services/resumeService";
+import { OnboardingModal } from "../components/OnboardingModal";
 import "./AppLayout.css";
 
 const { Sider, Content } = Layout;
@@ -37,7 +39,7 @@ const navItems: MenuProps["items"] = [
   {
     key: "/knowledge-graph",
     icon: <ApartmentOutlined />,
-    label: <span className="nav-label">Knowledg e Graph</span>,
+    label: <span className="nav-label">Knowledge Graph</span>,
   },
   {
     key: "/ai-tutor",
@@ -62,6 +64,25 @@ export function AppLayout() {
   const location = useLocation();
   const { user } = useUser();
   const { signOut } = useClerk();
+  const { getToken } = useAuth();
+
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const token = await getToken();
+      if (!token) return;
+      try {
+        const resumes = await listResumes(token);
+        setNeedsOnboarding(resumes.length === 0);
+      } catch (err) {
+        console.error("Failed to load resumes:", err);
+      } finally {
+        setChecked(true);
+      }
+    })();
+  }, [getToken]);
 
   const siderWidth = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_WIDTH;
 
@@ -109,79 +130,99 @@ export function AppLayout() {
   };
 
   return (
-    <Layout className="app-shell">
-      <Sider
-        className="app-sider"
-        width={SIDEBAR_WIDTH}
-        collapsedWidth={SIDEBAR_COLLAPSED}
-        collapsed={collapsed}
-        trigger={null}
-      >
-        <a
-          className="sider-logo"
-          onClick={() => navigate("/dashboard")}
-          role="button"
-          style={{ cursor: "pointer" }}
+    <>
+      <Layout className="app-shell">
+        <Sider
+          className="app-sider"
+          width={SIDEBAR_WIDTH}
+          collapsedWidth={SIDEBAR_COLLAPSED}
+          collapsed={collapsed}
+          trigger={null}
         >
-          <div className="sider-logo-icon">W</div>
-          <span className={`sider-logo-text${collapsed ? " collapsed" : ""}`}>
-            Work@X
-          </span>
-        </a>
+          <a
+            className="sider-logo"
+            onClick={() => navigate("/dashboard")}
+            role="button"
+            style={{ cursor: "pointer" }}
+          >
+            <div className="sider-logo-icon">W</div>
+            <span className={`sider-logo-text${collapsed ? " collapsed" : ""}`}>
+              Work@X
+            </span>
+          </a>
 
-        <div className="sider-nav-wrap">
-          {!collapsed && <div className="nav-section-label">Main</div>}
-          <Menu
-            theme="dark"
-            mode="inline"
-            selectedKeys={[location.pathname]}
-            items={navItems}
-            onClick={({ key }) => navigate(key)}
-            inlineCollapsed={collapsed}
-          />
-        </div>
+          <div className="sider-nav-wrap">
+            {!collapsed && <div className="nav-section-label">Main</div>}
+            <Menu
+              theme="dark"
+              mode="inline"
+              selectedKeys={[location.pathname]}
+              items={navItems}
+              onClick={({ key }) => navigate(key)}
+              inlineCollapsed={collapsed}
+            />
+          </div>
 
-        <div className="sider-footer">
-          <Dropdown menu={accountMenu} placement="topLeft" trigger={["click"]}>
-            <div className="user-chip">
-              <div className="user-chip-avatar">{initials}</div>
-              <div className={`user-chip-info${collapsed ? " collapsed" : ""}`}>
-                <span className="user-chip-name">{displayName}</span>
-                <span className="user-chip-email">{email}</span>
+          <div className="sider-footer">
+            <Dropdown
+              menu={accountMenu}
+              placement="topLeft"
+              trigger={["click"]}
+            >
+              <div className="user-chip">
+                <div className="user-chip-avatar">{initials}</div>
+                <div
+                  className={`user-chip-info${collapsed ? " collapsed" : ""}`}
+                >
+                  <span className="user-chip-name">{displayName}</span>
+                  <span className="user-chip-email">{email}</span>
+                </div>
               </div>
-            </div>
-          </Dropdown>
+            </Dropdown>
 
-          {collapsed && (
-            <div className="signout-btn-row">
-              <Tooltip title="Sign Out" placement="right">
-                <Button
-                  type="text"
-                  icon={<LogoutOutlined />}
-                  onClick={handleSignOut}
-                  size="small"
-                  style={{ color: "var(--text-tertiary)" }}
-                />
-              </Tooltip>
-            </div>
-          )}
-        </div>
-      </Sider>
+            {collapsed && (
+              <div className="signout-btn-row">
+                <Tooltip title="Sign Out" placement="right">
+                  <Button
+                    type="text"
+                    icon={<LogoutOutlined />}
+                    onClick={handleSignOut}
+                    size="small"
+                    style={{ color: "var(--text-tertiary)" }}
+                  />
+                </Tooltip>
+              </div>
+            )}
+          </div>
+        </Sider>
 
-      <button
-        className="sider-collapse-btn"
-        style={{ left: siderWidth - 11 }}
-        onClick={() => setCollapsed((c) => !c)}
-        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-      >
-        {collapsed ? <RightOutlined /> : <LeftOutlined />}
-      </button>
+        <button
+          className="sider-collapse-btn"
+          style={{ left: siderWidth - 11 }}
+          onClick={() => setCollapsed((c) => !c)}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? <RightOutlined /> : <LeftOutlined />}
+        </button>
 
-      <Content className="app-content-area" style={{ marginLeft: siderWidth }}>
-        <div className="app-content-inner">
-          <Outlet />
-        </div>
-      </Content>
-    </Layout>
+        <Content
+          className="app-content-area"
+          style={{ marginLeft: siderWidth }}
+        >
+          <div className="app-content-inner">
+            <Outlet />
+          </div>
+        </Content>
+      </Layout>
+
+      {checked && (
+        <OnboardingModal
+          open={needsOnboarding}
+          closable={false}
+          onComplete={() => setNeedsOnboarding(false)}
+          onClose={() => setNeedsOnboarding(false)}
+        />
+      )}
+    </>
   );
 }

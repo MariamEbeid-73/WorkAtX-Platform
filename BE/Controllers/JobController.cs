@@ -1,9 +1,10 @@
-using System.Text.Json;
 using BE.Common.Exceptions;
 using BE.DTOs.Jobs;
+using BE.Models;
 using BE.ServiceContracts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace BE.Controllers;
 
@@ -73,10 +74,8 @@ public class JobController : ControllerBase
     /// <summary>Fetches a job and enforces that the caller owns it.</summary>
     private async Task<BE.Models.Job> GetOwnedJobAsync(Guid jobId)
     {
-        var user = await _userService.GetOrCreateUserAsync(
-            _currentUserService.GetClerkUserId(),
-            _currentUserService.GetEmail());
-
+        var user = (HttpContext.Items["CurrentUser"] as User)
+            ?? await _userService.GetOrCreateUserAsync(_currentUserService.GetClerkUserId(), _currentUserService.GetEmail());
         var job = await _jobService.GetAsync(jobId)
             ?? throw new NotFoundException($"Job {jobId} not found.");
 

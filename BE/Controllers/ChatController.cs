@@ -3,6 +3,7 @@ using BE.Models;
 using BE.ServiceContracts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace BE.Controllers
 {
@@ -43,7 +44,15 @@ namespace BE.Controllers
             if (string.IsNullOrWhiteSpace(request.Content))
                 return BadRequest(new { message = "Message content is required." });
 
-            var user = await _userService.GetOrCreateUserAsync(_currentUserService.GetClerkUserId(), _currentUserService.GetEmail());
+            var user = (HttpContext.Items["CurrentUser"] as User)
+                ?? await _userService.GetOrCreateUserAsync(_currentUserService.GetClerkUserId(), _currentUserService.GetEmail());
+            // NEW — enforce CV upload before any chat can start.
+            var hasConfirmedResume = await _db.ResumeFiles.AnyAsync(r => r.UserId == user.Id && r.IsConfirmed);
+            if (!hasConfirmedResume)
+            {
+                return StatusCode(412, new { message = "Upload and confirm your CV before starting a chat.", code = "CV_REQUIRED" });
+            }
+
             var plan = _currentUserService.GetPlan();
 
             if (!PlanTier.AtLeast(plan, "pro"))

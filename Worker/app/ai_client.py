@@ -13,22 +13,6 @@ def _mock_ai_enabled() -> bool:
     return os.getenv("MOCK_AI", "true").lower() == "true"
 
 
-def _mock_ai_async_gap_enabled() -> bool:
-    return os.getenv("MOCK_AI_ASYNC_GAP", "false").lower() == "true"
-
-
-def _emit_mock_gap_analysis_progress(job_id: str):
-
-    stages = [
-        ("checking_context", 20),
-        ("analyzing_gaps", 55),
-        ("forming_plan", 85),
-    ]
-    for stage, percent in stages:
-        time.sleep(1)
-        publish_progress(job_id=job_id, stage=stage, percent=percent)
-
-
 def call_process_api(
     user_id: str,
     job_id: str,

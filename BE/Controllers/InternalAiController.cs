@@ -253,29 +253,35 @@ public class InternalAiController : ControllerBase
         if (job.Status is JobStatus.Completed or JobStatus.Failed)
             throw new ConflictException($"Job {jobId} is already {job.Status} — refusing a double-submit.");
 
-        job.Status = request.Status;
+        var effectiveStatus = request.Status;
+        string? effectiveError = request.Status == JobStatus.Failed ? request.Error : null;
+
+        try
+        {
+            if (job.JobType == JobType.Analysis1)
+            {
+                if (request.Status == JobStatus.Completed)
+                    SaveAnalysis1Result(job, request.ResultJson!);
+            }
+            else if (request.Status == JobStatus.Completed && !string.IsNullOrEmpty(request.ResultJson) && job.SessionId.HasValue)
+            {
+                await SaveChatResultAsync(job, request.ResultJson!);
+            }
+        }
+        catch (Exception ex)
+        {
+            // NEW — a malformed/unroutable result still resolves the job as
+            // failed instead of leaving it stuck in "processing" forever.
+            effectiveStatus = JobStatus.Failed;
+            effectiveError = $"Result routing failed: {ex.Message}";
+        }
+
+        job.Status = effectiveStatus;
         job.UpdatedAt = DateTimeOffset.UtcNow;
-
-        if (job.JobType == JobType.Analysis1)
-        {
-            if (request.Status == JobStatus.Completed)
-                SaveAnalysis1Result(job, request.ResultJson!);
-        }
-        else if (request.Status == JobStatus.Completed && !string.IsNullOrEmpty(request.ResultJson) && job.SessionId.HasValue)
-        {
-            await SaveChatResultAsync(job, request.ResultJson!);
-        }
-
-        job.ResultJson = request.Status == JobStatus.Completed ? request.ResultJson : null;
-        job.Error = request.Status == JobStatus.Failed ? request.Error : null;
+        job.ResultJson = effectiveStatus == JobStatus.Completed ? request.ResultJson : null;
+        job.Error = effectiveStatus == JobStatus.Failed ? effectiveError : null;
 
         await _db.SaveChangesAsync();
-
-        // Final push: this is the ONLY place completion is signaled over the
-        // socket — the Redis progress stream is explicitly progress-only
-        // (see REDIS_STREAM_CONTRACT_ADDENDUM.md §4). A client that stayed
-        // connected for the progress ticks gets the finished state here too,
-        // with no need to fall back to polling /api/jobs/{id}/status.
         await BroadcastJobUpdateAsync(job);
 
         return Ok(new AiResultResponse(job.Id, job.Status));
@@ -370,58 +376,6 @@ public class InternalAiController : ControllerBase
             {
                 // keep the previous summary; don't fail result submission over this
             }
-        }
-    }
-
-    private void SaveUnifiedResultIfApplicable(Guid userId, string resultJson)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(resultJson);
-            if (doc.RootElement.TryGetProperty("response_type", out var typeProp))
-            {
-                var responseType = typeProp.GetString();
-                if (responseType == "gap_analysis_result")
-                {
-                    var existing = _db.UserGapAnalyses.FirstOrDefault(g => g.UserId == userId);
-                    if (existing == null)
-                    {
-                        _db.UserGapAnalyses.Add(new UserGapAnalysis
-                        {
-                            UserId = userId,
-                            ResultJson = resultJson,
-                            UpdatedAt = DateTimeOffset.UtcNow
-                        });
-                    }
-                    else
-                    {
-                        existing.ResultJson = resultJson;
-                        existing.UpdatedAt = DateTimeOffset.UtcNow;
-                    }
-                }
-                else if (responseType == "study_plan_result")
-                {
-                    var existing = _db.UserStudyPlans.FirstOrDefault(s => s.UserId == userId);
-                    if (existing == null)
-                    {
-                        _db.UserStudyPlans.Add(new UserStudyPlan
-                        {
-                            UserId = userId,
-                            ResultJson = resultJson,
-                            UpdatedAt = DateTimeOffset.UtcNow
-                        });
-                    }
-                    else
-                    {
-                        existing.ResultJson = resultJson;
-                        existing.UpdatedAt = DateTimeOffset.UtcNow;
-                    }
-                }
-            }
-        }
-        catch
-        {
-            // Ignore JSON parsing errors if payload structure differs
         }
     }
 
