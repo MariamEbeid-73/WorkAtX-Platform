@@ -1,0 +1,49 @@
+# WorkX Frontend (FE) — Guide
+
+React 19 + TypeScript SPA, Ant Design, Clerk auth, SignalR live job updates. See root `AGENTS.md` for the pipeline it renders.
+
+## Commands
+
+```sh
+npm install
+npm run dev      # Vite dev server on http://localhost:5173
+npm run build    # tsc -b && vite build  →  dist/
+npm run lint     # oxlint  (NOT eslint — don't reach for ESLint config)
+npm run preview  # serve the built dist
+```
+
+- Linter is **oxlint** (`.oxlintrc.json`, no ESLint). Run `npm run lint` after changes.
+- Docker build (`FE/Dockerfile`) runs `npm run build` with node:20-alpine, serves `dist/` via nginx on port 4200 (`nginx.conf` SPA fallback to `index.html`).
+- Ports: dev 5173, docker 4200. BE CORS allows both. Point `VITE_API_URL` at `http://localhost:5000`.
+
+## Env — runtime-injected, not build-time
+
+- `docker-compose.yml` passes `VITE_API_URL` / `VITE_CLERK_PUBLISHABLE_KEY` into the FE container.
+- At container start `FE/env.sh` writes `window._env_` into `/usr/share/nginx/html/env-config.js` (script must stay LF line endings).
+- `src/config.ts` reads `window._env_[key]` first, falls back to `import.meta.env[key]`, then a default.
+- `.env.development` holds the dev keys; the publishable key there is the same one used in prod Clerk instance.
+
+## Auth & API
+
+- Clerk via `@clerk/react` (`ClerkProvider` in `src/main.tsx`); `ClerkAuthGuard` wraps authenticated routes.
+- `src/services/api.ts` is the single fetch helper — adds `Content-Type: application/json` + `Authorization: Bearer <token>`; pass the Clerk token explicitly.
+- SignalR live updates: `src/services/jobSocket.ts` connects to BE `/hubs/job-status`, passes the JWT as `?access_token=` (BE requires the query param on the hub path). Subscribe with `connection.invoke('SubscribeToJob', jobId)`; one `job_status_update` handler covers the whole job lifecycle (queued → processing → completed/failed + stage/progress).
+
+## Layout
+
+- `src/pages/` — routes (`Dashboard`, `AiTutorPage`, `ResumesPage`, `CvOptimizerPage`, `MockInterviewPage`, `GeniPage`, OAuth/SSO return pages, ...)
+- `src/components/` — `dashboard/`, `chat/`, `auth/`, `billing/`
+- `src/services/` — typed API modules per domain (chat, resume, analysis, profile, oauth, jobSocket). **`jobService.ts` holds the generic job-wait helpers (`waitForJobCompletion`, `getJobStatus`, `getJobResult`, `pollJobUntilDone`) — ALL async flows (chat AND CV analysis) must wait on jobs through these, never hand-rolled socket/poll code.** built on `api.ts`
+- `src/types/` — TS mirrors of BE DTO / contract shapes (`profile.ts` has `ScoreBreakdown`, used by dashboard scores card)
+- `src/hooks/` — `useProfile`, `useChat`; `src/router/AppRouter.tsx`; `src/theme/antdTheme.ts` (Ant Design tokens)
+
+## Gotchas
+
+- Keep `src/types/*` in sync with `CONTRACTS.md` / BE DTOs — the job result is polymorphic (string for plain chat replies, object for analysis), so result consumers must handle both.
+- Chat replies are NOT in the `POST /api/chat/message` response — the API returns only `{ jobId }`; wait via `waitForJobCompletion` (SignalR + poll fallback), then re-fetch authoritative data.
+- `POST /resumes/{id}/confirm` returns `{ resume, analysisJobId }` — if `analysisJobId` is non-null, an analysis parse was queued; track it the same way as a chat job. `analysisJobId: null` means the CV was already parsed (no progress to show).
+- **Analysis results persist.** On mount/refresh, `KnowledgeGraphPage` calls `GET /api/analysis1/latest` (via `src/services/analysisService.ts`) to restore the last completed analysis from the DB — never queue a job just to re-display a stored result. A fresh parse is only triggered explicitly (`?analyze=true` after onboarding, or the in-page "Run analysis" button). `getLatestAnalysis` returns `data: null` when none exists — render the idle state.
+- `src/services/analysisService.ts` owns `startAnalysis` (`POST /api/analysis1/start` → `{ jobId }`) and `getLatestAnalysis`; `startAnalysis` lives here, NOT in `resumeService.ts`.
+- Dashboard scores (`GET /api/profile/scores`) can return `data: null` before the worker computes them — render fallbacks, don't error.
+- `FE/src/pages/env.sh` is a duplicate copy of `FE/env.sh` (both tracked); edit `FE/env.sh` — the Dockerfile copies only the root one.
+- `package.json` still says `"name": "fe-tmp"` — historical, harmless.
