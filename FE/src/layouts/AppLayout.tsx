@@ -72,12 +72,17 @@ export function AppLayout() {
   useEffect(() => {
     (async () => {
       const token = await getToken();
-      if (!token) return;
+      if (!token) {
+        setChecked(true);
+        setNeedsOnboarding(true);
+        return;
+      }
       try {
         const resumes = await listResumes(token);
         setNeedsOnboarding(resumes.length === 0);
       } catch (err) {
         console.error("Failed to load resumes:", err);
+        setNeedsOnboarding(true);
       } finally {
         setChecked(true);
       }

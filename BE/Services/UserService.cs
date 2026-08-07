@@ -24,21 +24,21 @@ public class UserService : IUserService
             ? $"{clerkUserId}@noemail.local"
             : email;
 
-        var user = new User { ClerkUserId = clerkUserId, Email = resolvedEmail };
-        _db.Users.Add(user);
+        var created = await _db.Users
+            .FromSqlRaw(@"
+                INSERT INTO ""Users"" (""Id"", ""ClerkUserId"", ""Email"", ""CreatedAt"")
+                VALUES (gen_random_uuid(), {0}, {1}, NOW())
+                ON CONFLICT (""ClerkUserId"") DO NOTHING
+                RETURNING *
+            ", clerkUserId, resolvedEmail)
+            .AsNoTracking()
+            .FirstOrDefaultAsync();
 
-        try
-        {
-            await _db.SaveChangesAsync();
-        }
-        catch (DbUpdateException)
-        {
-            var winner = await _db.Users.FirstOrDefaultAsync(u => u.ClerkUserId == clerkUserId);
-            if (winner != null) return winner;
-            throw;
-        }
+        if (created != null) return created;
 
-        return user;
+        return (await _db.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.ClerkUserId == clerkUserId))!;
     }
 
     public async Task<User?> GetByClerkIdAsync(string clerkUserId)
