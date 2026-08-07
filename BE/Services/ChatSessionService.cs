@@ -1,4 +1,5 @@
-﻿using BE.Common.Exceptions;
+﻿using System.Text.Json;
+using BE.Common.Exceptions;
 using BE.Data;
 using BE.DTOs.Chat;
 using BE.Models;
@@ -39,11 +40,56 @@ public class ChatSessionService : IChatSessionService
     {
         var session = await GetOwnedAsync(userId, sessionId);
 
-        return await _db.ChatMessages
+        var messages = await _db.ChatMessages
             .Where(m => m.SessionId == session.Id)
             .OrderBy(m => m.CreatedAt)
-            .Select(m => new ChatMessageResponse(m.Id, m.Role, m.Content, m.ResponseType, m.JobId, m.CreatedAt))
             .ToListAsync();
+
+        // Batch-fetch the structured payloads for gap_analysis / study_plan
+        // assistant messages so the frontend can redraw the rich card on
+        // session reload without an extra round trip per message.
+        var gapJobIds = messages
+            .Where(m => m.ResponseType == AiResponseType.GapAnalysis && m.JobId.HasValue)
+            .Select(m => m.JobId!.Value)
+            .ToList();
+
+        var planJobIds = messages
+            .Where(m => m.ResponseType == AiResponseType.StudyPlan && m.JobId.HasValue)
+            .Select(m => m.JobId!.Value)
+            .ToList();
+
+        var gapByJobId = gapJobIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : (await _db.UserGapAnalyses
+                .Where(g => g.JobId.HasValue && gapJobIds.Contains(g.JobId.Value))
+                .ToListAsync())
+                .GroupBy(g => g.JobId!.Value)
+                .ToDictionary(gr => gr.Key, gr => gr.First().ResultJson);
+
+        var planByJobId = planJobIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : (await _db.UserStudyPlans
+                .Where(p => p.JobId.HasValue && planJobIds.Contains(p.JobId.Value))
+                .ToListAsync())
+                .GroupBy(p => p.JobId!.Value)
+                .ToDictionary(gr => gr.Key, gr => gr.First().ResultJson);
+
+        return messages.Select(m =>
+        {
+            object? result = null;
+
+            if (m.JobId.HasValue)
+            {
+                if (m.ResponseType == AiResponseType.GapAnalysis
+                    && gapByJobId.TryGetValue(m.JobId.Value, out var gapJson))
+                    result = JsonSerializer.Deserialize<JsonElement>(gapJson);
+                else if (m.ResponseType == AiResponseType.StudyPlan
+                    && planByJobId.TryGetValue(m.JobId.Value, out var planJson))
+                    result = JsonSerializer.Deserialize<JsonElement>(planJson);
+            }
+
+            return new ChatMessageResponse(m.Id, m.Role, m.Content, m.ResponseType, m.JobId, result, m.CreatedAt);
+        }).ToList();
     }
 
     public async Task<ChatSessionResponse> RenameAsync(Guid userId, Guid sessionId, string title)

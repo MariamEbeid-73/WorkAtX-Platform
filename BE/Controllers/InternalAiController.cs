@@ -87,49 +87,59 @@ public class InternalAiController : ControllerBase
     }
 
     /// <summary>
-    /// GET /api/internal/ai/gap-analysis/{userId/{sessionId}}
+    /// GET /api/internal/ai/gap-analysis/{userId}
     /// Returns the user's latest Gap Analysis result stored in UserGapAnalyses.
     /// Used mid-processing by the AI Node (Step 7a).
     /// </summary>
-    [HttpGet("gap-analysis/{userId:guid}/{sessionId:guid}")]
-    public async Task<IActionResult> GetGapAnalysis(Guid userId, Guid sessionId)
+    [HttpGet("gap-analysis/{userId:guid}")]
+    public async Task<IActionResult> GetGapAnalysis(Guid userId, [FromQuery] Guid? sessionId)
     {
         if (!IsAuthorized(Request))
             throw new UnauthorizedAppException("Invalid or missing service token.");
 
-        var gapAnalysis = await _db.UserGapAnalyses.AsNoTracking()
-            .FirstOrDefaultAsync(g => g.UserId == userId && g.SessionId == sessionId)
-            ?? throw new NotFoundException($"No gap analysis found for user {userId} and session {sessionId}.");
+        var query = _db.UserGapAnalyses.AsNoTracking().Where(g => g.UserId == userId);
+        if (sessionId.HasValue)
+            query = query.Where(g => g.SessionId == sessionId.Value);
+
+        var gapAnalysis = await query
+            .OrderByDescending(g => g.CreatedAt)
+            .FirstOrDefaultAsync()
+            ?? throw new NotFoundException($"No gap analysis found for user {userId}" +
+                (sessionId.HasValue ? $" and session {sessionId}." : "."));
 
         object? result = null;
         if (!string.IsNullOrEmpty(gapAnalysis.ResultJson))
             result = JsonSerializer.Deserialize<JsonElement>(gapAnalysis.ResultJson);
 
-        return Ok(new { userId, sessionId, gapAnalysis = result, updatedAt = gapAnalysis.UpdatedAt });
+        return Ok(new { userId, sessionId = gapAnalysis.SessionId, gapAnalysis = result, updatedAt = gapAnalysis.UpdatedAt });
     }
 
     /// <summary>
-    /// GET /api/internal/ai/study-plan/{userId/{sessionId}}
+    /// GET /api/internal/ai/study-plan/{userId}
     /// Returns the user's latest Study Plan result stored in UserStudyPlans.
     /// Used mid-processing by the AI Node (Step ).
     /// </summary>
-    [HttpGet("plan/{userId:guid}/{sessionId:guid}")]
-    public async Task<IActionResult> GetStudyPlan(Guid userId, Guid sessionId)
+    [HttpGet("plan/{userId:guid}")]
+    public async Task<IActionResult> GetStudyPlan(Guid userId, [FromQuery] Guid? sessionId)
     {
         if (!IsAuthorized(Request))
             throw new UnauthorizedAppException("Invalid or missing service token.");
 
-        var plan = await _db.UserStudyPlans.AsNoTracking()
-            .Where(p => p.UserId == userId && p.SessionId == sessionId)
+        var query = _db.UserStudyPlans.AsNoTracking().Where(p => p.UserId == userId);
+        if (sessionId.HasValue)
+            query = query.Where(p => p.SessionId == sessionId.Value);
+
+        var plan = await query
             .OrderByDescending(p => p.CreatedAt)
             .FirstOrDefaultAsync()
-            ?? throw new NotFoundException($"No study plan found for user {userId} and session {sessionId}.");
+            ?? throw new NotFoundException($"No study plan found for user {userId}" +
+                (sessionId.HasValue ? $" and session {sessionId}." : "."));
 
         object? result = null;
         if (!string.IsNullOrEmpty(plan.ResultJson))
             result = JsonSerializer.Deserialize<JsonElement>(plan.ResultJson);
 
-        return Ok(new { userId, sessionId, studyPlan = result, updatedAt = plan.UpdatedAt });
+        return Ok(new { userId, sessionId = plan.SessionId, studyPlan = result, updatedAt = plan.UpdatedAt });
     }
 
     /// <summary>
@@ -294,13 +304,28 @@ public class InternalAiController : ControllerBase
                 ? typeProp.GetString() ?? AiResponseType.NormalText
                 : AiResponseType.NormalText;
 
+            // gap_analysis / study_plan payloads are nested under "response";
+            // normal_text keeps "reply" at the root. See AI Node contract.
+            var hasResponsePayload = root.TryGetProperty("response", out var responsePayload)
+                && responsePayload.ValueKind == JsonValueKind.Object;
+
             displayContent = responseType switch
             {
                 AiResponseType.NormalText => root.TryGetProperty("reply", out var r) ? r.GetString() ?? "" : "",
-                AiResponseType.GapAnalysis => root.TryGetProperty("summary", out var s) ? s.GetString() ?? "Gap analysis ready." : "Gap analysis ready.",
-                AiResponseType.StudyPlan => root.TryGetProperty("summary", out var s2) ? s2.GetString() ?? "Study plan ready." : "Study plan ready.",
+                AiResponseType.GapAnalysis => hasResponsePayload
+                    ? ExtractSummary(responsePayload, "Gap analysis ready.")
+                    : "Gap analysis ready.",
+                AiResponseType.StudyPlan => hasResponsePayload
+                    ? ExtractSummary(responsePayload, "Study plan ready.")
+                    : "Study plan ready.",
                 _ => ""
             };
+
+            // Persist the inner structured payload (not the {responseType,
+            // response} envelope) — this is exactly what
+            // GET /api/internal/ai/gap-analysis/{userId} and the session
+            // reconstruction endpoint hand back.
+            var structuredJson = hasResponsePayload ? responsePayload.GetRawText() : resultJson;
 
             if (responseType == AiResponseType.GapAnalysis)
             {
@@ -309,7 +334,7 @@ public class InternalAiController : ControllerBase
                     UserId = job.UserId,
                     SessionId = job.SessionId!.Value,
                     JobId = job.Id,
-                    ResultJson = resultJson,
+                    ResultJson = structuredJson,
                 });
             }
             else if (responseType == AiResponseType.StudyPlan)
@@ -319,7 +344,7 @@ public class InternalAiController : ControllerBase
                     UserId = job.UserId,
                     SessionId = job.SessionId!.Value,
                     JobId = job.Id,
-                    ResultJson = resultJson,
+                    ResultJson = structuredJson,
                 });
             }
         }
@@ -342,8 +367,10 @@ public class InternalAiController : ControllerBase
 
             // Pull the last user message for this job to feed the summarizer
             var userTurn = await _db.ChatMessages
-                .Where(m => m.SessionId == session.Id && m.Role == ChatMessageRole.User)
-                .OrderByDescending(m => m.JobId == job.Id)
+                .Where(m => m.SessionId == session.Id
+                 && m.Role == ChatMessageRole.User
+                 && m.JobId == job.Id)
+                .OrderByDescending(m => m.CreatedAt)
                 .Select(m => m.Content)
                 .FirstOrDefaultAsync() ?? "";
 
@@ -421,6 +448,25 @@ public class InternalAiController : ControllerBase
         var b = Encoding.UTF8.GetBytes(_serviceToken);
         return a.Length == b.Length
             && CryptographicOperations.FixedTimeEquals(a, b);
+    }
+
+    /// <summary>
+    /// "summary" can sit directly on the response payload (study_plan today)
+    /// or one level deeper inside "gap_analysis" (per the Node 8 output
+    /// contract). Checks both, falls back to a generic display line.
+    /// </summary>
+    private static string ExtractSummary(JsonElement responsePayload, string fallback)
+    {
+        if (responsePayload.TryGetProperty("summary", out var s1) && s1.ValueKind == JsonValueKind.String)
+            return s1.GetString() is { Length: > 0 } v1 ? v1 : fallback;
+
+        if (responsePayload.TryGetProperty("gap_analysis", out var ga)
+            && ga.ValueKind == JsonValueKind.Object
+            && ga.TryGetProperty("summary", out var s2)
+            && s2.ValueKind == JsonValueKind.String)
+            return s2.GetString() is { Length: > 0 } v2 ? v2 : fallback;
+
+        return fallback;
     }
 
     private static object? DecodePayload(string? payloadJson)

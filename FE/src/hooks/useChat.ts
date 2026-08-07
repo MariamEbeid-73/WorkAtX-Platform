@@ -16,6 +16,7 @@ function toUiMessage(m: {
   content: string;
   responseType: UiChatMessage["responseType"];
   jobId: string | null;
+  result: UiChatMessage["result"];
   createdAt: string;
 }): UiChatMessage {
   return { ...m };
@@ -164,6 +165,7 @@ export function useChat() {
         content: trimmed,
         responseType: null,
         jobId: null,
+        result: null,
         createdAt: new Date().toISOString(),
       };
       const pendingAssistant: UiChatMessage = {
@@ -172,6 +174,7 @@ export function useChat() {
         content: "",
         responseType: null,
         jobId: null,
+        result: null,
         createdAt: new Date().toISOString(),
         pending: true,
       };
