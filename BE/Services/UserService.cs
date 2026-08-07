@@ -24,17 +24,11 @@ public class UserService : IUserService
             ? $"{clerkUserId}@noemail.local"
             : email;
 
-        var created = await _db.Users
-            .FromSqlRaw(@"
-                INSERT INTO ""Users"" (""Id"", ""ClerkUserId"", ""Email"", ""CreatedAt"")
-                VALUES (gen_random_uuid(), {0}, {1}, NOW())
-                ON CONFLICT (""ClerkUserId"") DO NOTHING
-                RETURNING *
-            ", clerkUserId, resolvedEmail)
-            .AsNoTracking()
-            .FirstOrDefaultAsync();
-
-        if (created != null) return created;
+        await _db.Database.ExecuteSqlRawAsync(
+            @"INSERT INTO ""Users"" (""Id"", ""ClerkUserId"", ""Email"", ""CreatedAt"")
+              VALUES (gen_random_uuid(), {0}, {1}, NOW())
+              ON CONFLICT (""ClerkUserId"") DO NOTHING",
+            clerkUserId, resolvedEmail);
 
         return (await _db.Users
             .AsNoTracking()

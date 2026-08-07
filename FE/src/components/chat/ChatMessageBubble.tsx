@@ -1,5 +1,7 @@
-import { Avatar, Flex, Tag, Typography } from 'antd';
-import { RobotOutlined, UserOutlined } from '@ant-design/icons';
+import { useState, useCallback } from 'react';
+import { Avatar, Flex, Tag, Typography, Button, Tooltip } from 'antd';
+import { RobotOutlined, UserOutlined, CopyOutlined, CheckOutlined } from '@ant-design/icons';
+import ReactMarkdown from 'react-markdown';
 import type { UiChatMessage } from '../../types/chat';
 import './ChatMessageBubble.css';
 
@@ -21,6 +23,18 @@ interface ChatMessageBubbleProps {
 
 export function ChatMessageBubble({ message, userInitials }: ChatMessageBubbleProps) {
   const isUser = message.role === 'user';
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    if (message.pending || message.failed) return;
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard not available */
+    }
+  }, [message.content, message.pending, message.failed]);
 
   return (
     <Flex
@@ -50,12 +64,29 @@ export function ChatMessageBubble({ message, userInitials }: ChatMessageBubblePr
           </span>
         ) : message.failed ? (
           <Text type="danger">Couldn't get a response. Please try again.</Text>
-        ) : (
+        ) : isUser ? (
           <Text style={{ whiteSpace: 'pre-wrap', color: 'inherit' }}>{message.content}</Text>
+        ) : (
+          <div className="chat-bubble__markdown">
+            <ReactMarkdown>{message.content}</ReactMarkdown>
+          </div>
         )}
 
         {!message.pending && (
-          <div className="chat-bubble__time">{formatTime(message.createdAt)}</div>
+          <Flex align="center" justify="space-between" className="chat-bubble__meta">
+            <div className="chat-bubble__time">{formatTime(message.createdAt)}</div>
+            {!isUser && !message.failed && (
+              <Tooltip title={copied ? 'Copied' : 'Copy'}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={copied ? <CheckOutlined /> : <CopyOutlined />}
+                  onClick={handleCopy}
+                  className="chat-bubble__copy-btn"
+                />
+              </Tooltip>
+            )}
+          </Flex>
         )}
       </div>
 

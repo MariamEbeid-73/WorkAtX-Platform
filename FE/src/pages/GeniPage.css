@@ -8,6 +8,138 @@
   height: 100%;
 }
 
+/* ── Header ───────────────────────────────────────────────────── */
+
+.geni-header {
+  flex-shrink: 0;
+  margin-bottom: 8px;
+}
+
+.geni-header__avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.geni-header__avatar {
+  background: var(--gradient-brand);
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.35);
+}
+
+.geni-header__dot {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-success);
+  border: 2px solid var(--bg-base);
+}
+
+/* ── Hero empty state ──────────────────────────────────────────── */
+
+.geni-hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  padding: 20px 16px 32px;
+}
+
+.geni-hero__glow {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 600px;
+  height: 400px;
+  background: var(--gradient-hero-glow);
+  pointer-events: none;
+}
+
+.geni-hero__orb {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--gradient-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-glow), 0 0 0 6px rgba(139, 92, 246, 0.1);
+  flex-shrink: 0;
+  margin-bottom: 24px;
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+.geni-hero__text {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.geni-hero__greeting {
+  font-family: var(--font-heading);
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 10px;
+  line-height: 1.2;
+}
+
+.geni-hero__subtitle {
+  font-size: 15px;
+  color: var(--text-secondary);
+}
+
+/* ── Capability cards grid ─────────────────────────────────────── */
+
+.geni-cap-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  width: 100%;
+  max-width: 560px;
+}
+
+.geni-cap-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 18px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--duration-normal) var(--ease-default);
+  animation: fadeInUp 0.5s ease both;
+  width: 100%;
+  font-family: inherit;
+}
+
+.geni-cap-card:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-accent);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--border-accent);
+}
+
+.geni-cap-card__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid;
+  flex-shrink: 0;
+  font-size: 18px;
+}
+
+/* ── Chat scroll area (when messages exist) ────────────────────── */
+
 .geni-chat-scroll {
   flex: 1;
   overflow-y: auto;
@@ -17,19 +149,81 @@
   padding: 4px 4px 12px;
 }
 
-.geni-chat-empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 40px 20px;
+/* ── Composer ──────────────────────────────────────────────────── */
+
+.geni-composer {
+  flex-shrink: 0;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 860px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-2xl);
+  padding: 8px 8px 8px 16px;
+  transition: border-color var(--duration-fast) var(--ease-default),
+    box-shadow var(--duration-fast) var(--ease-default);
 }
 
-.geni-sample-btn {
-  border-radius: var(--radius-full);
-  border-color: var(--border-default);
-  color: var(--text-secondary);
-  font-size: 13px;
+.geni-composer:focus-within {
+  border-color: var(--border-accent);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+}
+
+.geni-composer--disabled {
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.geni-composer__input {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 4px 0 8px !important;
+  resize: none;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.geni-composer__input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.geni-composer__input:focus {
+  box-shadow: none !important;
+}
+
+.geni-composer__footer {
+  padding-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.geni-composer__hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  user-select: none;
+}
+
+.geni-composer__send {
+  border-radius: var(--radius-lg) !important;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Responsive ────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .geni-cap-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .geni-hero__greeting {
+    font-size: 26px;
+  }
+
+  .geni-composer {
+    max-width: 100%;
+  }
 }

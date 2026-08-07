@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { Flex, Typography, Input, Button, Tooltip, Alert } from 'antd';
-import { SendOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
+import { Flex, Typography, Input, Button, Tooltip, Alert, Avatar } from 'antd';
+import {
+  SendOutlined,
+  MenuUnfoldOutlined,
+  RobotOutlined,
+  FileSearchOutlined,
+  ReadOutlined,
+  TrophyOutlined,
+  BulbOutlined,
+} from '@ant-design/icons';
 import { useUser } from '@clerk/react';
 import { useChat } from '../hooks/useChat';
 import { ChatSidebar } from '../components/chat/ChatSidebar';
@@ -9,17 +17,41 @@ import './GeniPage.css';
 
 const { Title, Text } = Typography;
 
-const SAMPLE_PROMPTS = [
-  'What skills do I need for a Google SWE role?',
-  'Analyze my resume gaps',
-  'Create a 30-day study plan for system design',
-  'Compare my profile with Meta requirements',
+const CAPABILITIES = [
+  {
+    icon: <FileSearchOutlined />,
+    title: 'Analyze my resume gaps',
+    desc: 'Find skill gaps against target roles',
+    prompt: 'Analyze my resume gaps',
+    color: '#8B5CF6',
+  },
+  {
+    icon: <ReadOutlined />,
+    title: 'Create a study plan',
+    desc: 'Get a tailored 30-day learning roadmap',
+    prompt: 'Create a 30-day study plan for system design',
+    color: '#06B6D4',
+  },
+  {
+    icon: <TrophyOutlined />,
+    title: 'Check role fit',
+    desc: 'Compare your profile with job requirements',
+    prompt: 'Compare my profile with Meta requirements',
+    color: '#10B981',
+  },
+  {
+    icon: <BulbOutlined />,
+    title: 'Career advice',
+    desc: 'Get personalized guidance for your path',
+    prompt: 'What skills do I need for a Google SWE role?',
+    color: '#F59E0B',
+  },
 ];
 
 export function GeniPage() {
   const { user } = useUser();
   const [input, setInput] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -31,6 +63,7 @@ export function GeniPage() {
     messagesLoading,
     isSending,
     sendError,
+    pendingStage,
     startNewChat,
     selectSession,
     renameSession,
@@ -82,8 +115,8 @@ export function GeniPage() {
 
       <div className="geni-chat-window">
         {/* ── Header ─────────────────────────────────────────────── */}
-        <Flex align="center" justify="space-between" style={{ marginBottom: 16, flexShrink: 0 }}>
-          <Flex align="center" gap={10}>
+        <Flex align="center" justify="space-between" className="geni-header">
+          <Flex align="center" gap={12}>
             {!sidebarOpen && (
               <Tooltip title="Chats">
                 <Button
@@ -94,46 +127,88 @@ export function GeniPage() {
                 />
               </Tooltip>
             )}
-            <Flex vertical gap={2}>
-              <Text style={{ fontSize: 13, color: 'var(--text-tertiary)', fontWeight: 500 }}>
-                AI Assistant
-              </Text>
-              <Title level={4} style={{ margin: 0, color: 'var(--text-primary)' }}>
+            <div className="geni-header__avatar-wrap">
+              <Avatar
+                icon={<RobotOutlined />}
+                size={38}
+                className="geni-header__avatar"
+              />
+              <span className="geni-header__dot" />
+            </div>
+            <Flex vertical gap={0}>
+              <Title level={5} style={{ margin: 0, color: 'var(--text-primary)', fontSize: 16 }}>
                 Geni
               </Title>
+              <Text style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                AI career assistant
+              </Text>
             </Flex>
           </Flex>
         </Flex>
 
         {/* ── Messages ───────────────────────────────────────────── */}
-        <div className="geni-chat-scroll">
-          {messagesLoading && <Text type="secondary">Loading conversation…</Text>}
+        {isEmptyState && !messagesLoading ? (
+          <div className="geni-hero">
+            <div className="geni-hero__glow" />
 
-          {isEmptyState && !messagesLoading && (
-            <div className="geni-chat-empty">
-              <Title level={3} style={{ color: 'var(--text-primary)' }}>
-                Hi{user?.firstName ? `, ${user.firstName}` : ''}! I'm Geni.
-              </Title>
-              <Text type="secondary">
+            <div className="geni-hero__orb animate-scale-in">
+              <RobotOutlined style={{ fontSize: 32, color: '#fff' }} />
+            </div>
+
+            <div className="geni-hero__text animate-fade-in-up">
+              <h1 className="geni-hero__greeting">
+                Hi{user?.firstName ? `, ${user.firstName}` : ''}! I'm{' '}
+                <span className="gradient-text">Geni</span>
+              </h1>
+              <Text className="geni-hero__subtitle">
                 Your AI career assistant — ask about skill gaps, study plans, or role fit.
               </Text>
-              <Flex wrap gap={8} style={{ marginTop: 20 }}>
-                {SAMPLE_PROMPTS.map((p) => (
-                  <Button key={p} onClick={() => handleSend(p)} className="geni-sample-btn">
-                    {p}
-                  </Button>
-                ))}
-              </Flex>
             </div>
-          )}
 
-          {!messagesLoading &&
-            messages.map((m) => (
-              <ChatMessageBubble key={m.id} message={m} userInitials={initials} />
-            ))}
+            <div className="geni-cap-grid">
+              {CAPABILITIES.map((cap, i) => (
+                <button
+                  key={cap.prompt}
+                  className="geni-cap-card"
+                  onClick={() => handleSend(cap.prompt)}
+                  style={{
+                    animationDelay: `${0.3 + i * 0.1}s`,
+                  }}
+                >
+                  <div
+                    className="geni-cap-card__icon"
+                    style={{
+                      background: `${cap.color}18`,
+                      borderColor: `${cap.color}30`,
+                      color: cap.color,
+                    }}
+                  >
+                    {cap.icon}
+                  </div>
+                  <Flex vertical gap={2} style={{ textAlign: 'left' }}>
+                    <Text style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>
+                      {cap.title}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.4 }}>
+                      {cap.desc}
+                    </Text>
+                  </Flex>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="geni-chat-scroll">
+            {messagesLoading && <Text type="secondary">Loading conversation…</Text>}
 
-          <div ref={messagesEndRef} />
-        </div>
+            {!messagesLoading &&
+              messages.map((m) => (
+                <ChatMessageBubble key={m.id} message={m} userInitials={initials} />
+              ))}
+
+            <div ref={messagesEndRef} />
+          </div>
+        )}
 
         {sendError && (
           <Alert
@@ -145,11 +220,11 @@ export function GeniPage() {
         )}
 
         {/* ── Composer ───────────────────────────────────────────── */}
-        <Flex gap={8} style={{ flexShrink: 0 }}>
+        <div className={`geni-composer ${isSending ? 'geni-composer--disabled' : ''}`}>
           <Input.TextArea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask Geni anything about your career..."
+            placeholder={isSending && pendingStage ? `Geni is ${pendingStage.toLowerCase()}…` : 'Ask Geni anything about your career…'}
             autoSize={{ minRows: 1, maxRows: 5 }}
             onPressEnter={(e) => {
               if (!e.shiftKey) {
@@ -158,15 +233,24 @@ export function GeniPage() {
               }
             }}
             disabled={isSending}
+            className="geni-composer__input"
           />
-          <Button
-            type="primary"
-            icon={<SendOutlined />}
-            onClick={() => handleSend()}
-            loading={isSending}
-            disabled={!input.trim()}
-          />
-        </Flex>
+          <Flex align="center" justify="space-between" className="geni-composer__footer">
+            <Text className="geni-composer__hint">
+              ↵ send · ⇧↵ newline
+            </Text>
+            <Button
+              type="primary"
+              icon={<SendOutlined />}
+              onClick={() => handleSend()}
+              loading={isSending}
+              disabled={!input.trim()}
+              className="geni-composer__send"
+            >
+              Send
+            </Button>
+          </Flex>
+        </div>
       </div>
     </div>
   );
