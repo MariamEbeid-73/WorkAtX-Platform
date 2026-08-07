@@ -87,59 +87,49 @@ public class InternalAiController : ControllerBase
     }
 
     /// <summary>
-    /// GET /api/internal/ai/gap-analysis/{userId}
+    /// GET /api/internal/ai/gap-analysis/{userId/{sessionId}}
     /// Returns the user's latest Gap Analysis result stored in UserGapAnalyses.
     /// Used mid-processing by the AI Node (Step 7a).
     /// </summary>
-    [HttpGet("gap-analysis/{userId:guid}")]
-    public async Task<IActionResult> GetGapAnalysis(Guid userId, [FromQuery] Guid? sessionId)
+    [HttpGet("gap-analysis/{userId:guid}/{sessionId:guid}")]
+    public async Task<IActionResult> GetGapAnalysis(Guid userId, Guid sessionId)
     {
         if (!IsAuthorized(Request))
             throw new UnauthorizedAppException("Invalid or missing service token.");
 
-        var query = _db.UserGapAnalyses.AsNoTracking().Where(g => g.UserId == userId);
-        if (sessionId.HasValue)
-            query = query.Where(g => g.SessionId == sessionId.Value);
-
-        var gapAnalysis = await query
-            .OrderByDescending(g => g.CreatedAt)
-            .FirstOrDefaultAsync()
-            ?? throw new NotFoundException($"No gap analysis found for user {userId}" +
-                (sessionId.HasValue ? $" and session {sessionId}." : "."));
+        var gapAnalysis = await _db.UserGapAnalyses.AsNoTracking()
+            .FirstOrDefaultAsync(g => g.UserId == userId && g.SessionId == sessionId)
+            ?? throw new NotFoundException($"No gap analysis found for user {userId} and session {sessionId}.");
 
         object? result = null;
         if (!string.IsNullOrEmpty(gapAnalysis.ResultJson))
             result = JsonSerializer.Deserialize<JsonElement>(gapAnalysis.ResultJson);
 
-        return Ok(new { userId, sessionId = gapAnalysis.SessionId, gapAnalysis = result, updatedAt = gapAnalysis.UpdatedAt });
+        return Ok(new { userId, sessionId, gapAnalysis = result, updatedAt = gapAnalysis.UpdatedAt });
     }
 
     /// <summary>
-    /// GET /api/internal/ai/study-plan/{userId}
+    /// GET /api/internal/ai/study-plan/{userId/{sessionId}}
     /// Returns the user's latest Study Plan result stored in UserStudyPlans.
     /// Used mid-processing by the AI Node (Step ).
     /// </summary>
-    [HttpGet("plan/{userId:guid}")]
-    public async Task<IActionResult> GetStudyPlan(Guid userId, [FromQuery] Guid? sessionId)
+    [HttpGet("plan/{userId:guid}/{sessionId:guid}")]
+    public async Task<IActionResult> GetStudyPlan(Guid userId, Guid sessionId)
     {
         if (!IsAuthorized(Request))
             throw new UnauthorizedAppException("Invalid or missing service token.");
 
-        var query = _db.UserStudyPlans.AsNoTracking().Where(p => p.UserId == userId);
-        if (sessionId.HasValue)
-            query = query.Where(p => p.SessionId == sessionId.Value);
-
-        var plan = await query
+        var plan = await _db.UserStudyPlans.AsNoTracking()
+            .Where(p => p.UserId == userId && p.SessionId == sessionId)
             .OrderByDescending(p => p.CreatedAt)
             .FirstOrDefaultAsync()
-            ?? throw new NotFoundException($"No study plan found for user {userId}" +
-                (sessionId.HasValue ? $" and session {sessionId}." : "."));
+            ?? throw new NotFoundException($"No study plan found for user {userId} and session {sessionId}.");
 
         object? result = null;
         if (!string.IsNullOrEmpty(plan.ResultJson))
             result = JsonSerializer.Deserialize<JsonElement>(plan.ResultJson);
 
-        return Ok(new { userId, sessionId = plan.SessionId, studyPlan = result, updatedAt = plan.UpdatedAt });
+        return Ok(new { userId, sessionId, studyPlan = result, updatedAt = plan.UpdatedAt });
     }
 
     /// <summary>
@@ -352,10 +342,8 @@ public class InternalAiController : ControllerBase
 
             // Pull the last user message for this job to feed the summarizer
             var userTurn = await _db.ChatMessages
-                .Where(m => m.SessionId == session.Id
-                 && m.Role == ChatMessageRole.User
-                 && m.JobId == job.Id)
-                .OrderByDescending(m => m.CreatedAt)
+                .Where(m => m.SessionId == session.Id && m.Role == ChatMessageRole.User)
+                .OrderByDescending(m => m.JobId == job.Id)
                 .Select(m => m.Content)
                 .FirstOrDefaultAsync() ?? "";
 
