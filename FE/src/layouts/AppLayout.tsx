@@ -15,6 +15,7 @@ import {
   ReadOutlined,
   AudioOutlined,
   FileSearchOutlined,
+  ScheduleOutlined,
 } from "@ant-design/icons";
 import { listResumes } from "../services/resumeService";
 import { OnboardingModal } from "../components/OnboardingModal";
@@ -55,6 +56,11 @@ const navItems: MenuProps["items"] = [
     key: "/cv-optimizer",
     icon: <FileSearchOutlined />,
     label: <span className="nav-label">Cv Optimizer</span>,
+  },
+  {
+    key: "/plans",
+    icon: <ScheduleOutlined />,
+    label: <span className="nav-label">Plans</span>,
   },
 ];
 

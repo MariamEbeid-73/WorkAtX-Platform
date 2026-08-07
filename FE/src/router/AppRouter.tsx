@@ -20,6 +20,7 @@ import { SettingsPage } from '../pages/SettingsPage';
 import { AiTutorPage } from '../pages/AiTutorPage';
 import { MockInterviewPage } from '../pages/MockInterviewPage';
 import { CvOptimizerPage } from '../pages/CvOptimizerPage';
+import { PlansPage } from '../pages/PlansPage';
 
 /**
  * AppRouter
@@ -65,6 +66,7 @@ export function AppRouter() {
                 <Route path="/mock-interview" element={<MockInterviewPage />} />
                 <Route path="/cv-optimizer" element={<CvOptimizerPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/plans" element={<PlansPage />} />
             </Route>
 
             {/* ── Fallback ─────────────────────────────────────────────────────── */}
