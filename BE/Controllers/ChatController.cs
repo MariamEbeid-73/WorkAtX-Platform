@@ -1,9 +1,7 @@
-﻿using BE.Common;
-using BE.Models;
+﻿using BE.Models;
 using BE.ServiceContracts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace BE.Controllers
 {
@@ -14,7 +12,7 @@ namespace BE.Controllers
     {
         private readonly ICurrentUserService _currentUserService;
         private readonly IUserService _userService;
-        private readonly IUsageService _usageService;
+        private readonly IChatGateService _chatGateService;
         private readonly IJobService _jobService;
         private readonly IJobQueueService _jobQueueService;
         private readonly IChatSessionService _sessionService;
@@ -23,7 +21,7 @@ namespace BE.Controllers
         public ChatController(
             ICurrentUserService currentUserService,
             IUserService userService,
-            IUsageService usageService,
+            IChatGateService chatGateService,
             IJobService jobService,
             IJobQueueService jobQueueService,
             IChatSessionService sessionService,
@@ -31,7 +29,7 @@ namespace BE.Controllers
         {
             _currentUserService = currentUserService;
             _userService = userService;
-            _usageService = usageService;
+            _chatGateService = chatGateService;
             _jobService = jobService;
             _jobQueueService = jobQueueService;
             _sessionService = sessionService;
@@ -46,28 +44,13 @@ namespace BE.Controllers
 
             var user = (HttpContext.Items["CurrentUser"] as User)
                 ?? await _userService.GetOrCreateUserAsync(_currentUserService.GetClerkUserId(), _currentUserService.GetEmail());
-            // NEW — enforce CV upload before any chat can start.
-            var hasConfirmedResume = await _db.ResumeFiles.AnyAsync(r => r.UserId == user.Id && r.IsConfirmed);
-            if (!hasConfirmedResume)
-            {
-                return StatusCode(412, new { message = "Upload and confirm your CV before starting a chat.", code = "CV_REQUIRED" });
-            }
 
-            var plan = _currentUserService.GetPlan();
-
-            if (!PlanTier.AtLeast(plan, "pro"))
-            {
-                var (allowed, retryAfter, remaining) = await _usageService.TryConsumeMessageAsync(user.Id);
-                if (!allowed)
-                {
-                    return StatusCode(429, new
-                    {
-                        message = "Daily free message limit reached. Upgrade to Pro for unlimited messages.",
-                        retryAfterSeconds = (int)retryAfter!.Value.TotalSeconds
-                    });
-                }
-                Response.Headers["X-Messages-Remaining"] = remaining.ToString();
-            }
+            // CV-required + daily quota gate — shared with
+            // ChatSessionController.SubmitTechChoices via IChatGateService so
+            // both entry points to a chat turn stay in lock-step.
+            var gate = await _chatGateService.CheckAsync(user.Id, Response);
+            if (!gate.IsAllowed)
+                return gate.ErrorResult!;
 
             // 1. Resolve or create the session
             var session = await _sessionService.GetOrCreateForMessageAsync(user.Id, request.SessionId, request.Content);

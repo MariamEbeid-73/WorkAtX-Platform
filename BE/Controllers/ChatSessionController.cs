@@ -1,5 +1,4 @@
 ﻿using System.Text.Json;
-using BE.Common;
 using BE.DTOs.Chat;
 using BE.Models;
 using BE.ServiceContracts;
@@ -20,7 +19,7 @@ public class ChatSessionController : ControllerBase
     private readonly IChatSessionService _sessionService;
     private readonly IJobService _jobService;
     private readonly IJobQueueService _jobQueueService;
-    private readonly IUsageService _usageService;
+    private readonly IChatGateService _chatGateService;
     private readonly BE.Data.AppDbContext _db;
 
     public ChatSessionController(
@@ -29,7 +28,7 @@ public class ChatSessionController : ControllerBase
         IChatSessionService sessionService,
         IJobService jobService,
         IJobQueueService jobQueueService,
-        IUsageService usageService,
+        IChatGateService chatGateService,
         BE.Data.AppDbContext db)
     {
         _currentUserService = currentUserService;
@@ -37,7 +36,7 @@ public class ChatSessionController : ControllerBase
         _sessionService = sessionService;
         _jobService = jobService;
         _jobQueueService = jobQueueService;
-        _usageService = usageService;
+        _chatGateService = chatGateService;
         _db = db;
     }
 
@@ -89,32 +88,13 @@ public class ChatSessionController : ControllerBase
         // Validate session ownership (throws if not owned)
         var session = await GetOwnedSessionAsync(user.Id, id);
 
-        // Same CV-required gate as ChatController.SendMessage — resuming a
-        // paused study plan is still "chatting," so it shouldn't be reachable
-        // by a user who hasn't confirmed a resume upload.
-        var hasConfirmedResume = await _db.ResumeFiles.AnyAsync(r => r.UserId == user.Id && r.IsConfirmed);
-        if (!hasConfirmedResume)
-        {
-            return StatusCode(412, new { message = "Upload and confirm your CV before starting a chat.", code = "CV_REQUIRED" });
-        }
-
-        // Same daily free-tier quota gate as ChatController.SendMessage.
-        // Without this, a free-tier user who's exhausted their quota could
-        // keep creating jobs indefinitely via this endpoint instead.
-        var plan = _currentUserService.GetPlan();
-        if (!PlanTier.AtLeast(plan, "pro"))
-        {
-            var (allowed, retryAfter, remaining) = await _usageService.TryConsumeMessageAsync(user.Id);
-            if (!allowed)
-            {
-                return StatusCode(429, new
-                {
-                    message = "Daily free message limit reached. Upgrade to Pro for unlimited messages.",
-                    retryAfterSeconds = (int)retryAfter!.Value.TotalSeconds
-                });
-            }
-            Response.Headers["X-Messages-Remaining"] = remaining.ToString();
-        }
+        // Same CV-required + daily quota gate as ChatController.SendMessage —
+        // resuming a paused study plan is still "chatting," so it must go
+        // through the exact same checks. Shared via IChatGateService so the
+        // two controllers can't drift out of sync.
+        var gate = await _chatGateService.CheckAsync(user.Id, Response);
+        if (!gate.IsAllowed)
+            return gate.ErrorResult!;
 
         // JobId is used ONLY to verify the referenced gap-analysis job is
         // real and belongs to this session — a server-side consistency

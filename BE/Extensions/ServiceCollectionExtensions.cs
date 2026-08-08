@@ -101,6 +101,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IJobService, JobService>();
         services.AddScoped<IJobQueueService, JobQueueService>();
         services.AddScoped<IChatSessionService, ChatSessionService>();
+        services.AddScoped<IChatGateService, ChatGateService>();
         services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
 
 
