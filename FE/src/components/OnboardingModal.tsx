@@ -325,7 +325,7 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
           Connect Your Accounts
         </Title>
         <Text style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
-          Connect GitHub to calculate your developer score. LinkedIn is optional.
+          Both are optional. Connecting GitHub improves your developer score.
         </Text>
       </Flex>
 
@@ -358,12 +358,12 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
               </div>
               <Flex vertical gap={2}>
                 <Text style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>
-                  GitHub <span style={{ color: '#EF4444', fontSize: 12 }}>*</span>
+                  GitHub
                 </Text>
                 <Text style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
                   {githubConn
                     ? githubConn.username ? `@${githubConn.username}` : 'Connected'
-                    : 'Required for developer score'}
+                    : 'Optional — improves your developer score'}
                 </Text>
               </Flex>
             </Flex>

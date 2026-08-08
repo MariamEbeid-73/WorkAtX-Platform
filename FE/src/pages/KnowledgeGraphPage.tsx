@@ -1772,9 +1772,17 @@ export function KnowledgeGraphPage() {
   };
 
   useEffect(() => {
-    // Explicit re-run request (e.g. right after onboarding) — queue a fresh job.
-    if (searchParams.get("analyze") === "true") {
-      triggerAnalysis();
+    // Post-onboarding handoff: ResumeService.ConfirmUploadAsync already
+    // queued (or reused) an analysis1 job for the confirmed resume, and
+    // OnboardingModal passes that job's id along here. Just watch it —
+    // do NOT call startAnalysis()/POST /api/analysis1/start, which would
+    // queue a second, redundant analysis1 job for the same resume and can
+    // race with the one onboarding already started (see CONTRACTS.md §8).
+    const paramJobId = searchParams.get("jobId");
+    if (paramJobId) {
+      setResultData(null);
+      setJobId(paramJobId);
+      setPageState("loading");
       setSearchParams({}, { replace: true });
       return;
     }
