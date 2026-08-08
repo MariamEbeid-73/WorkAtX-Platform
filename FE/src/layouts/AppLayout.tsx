@@ -48,11 +48,6 @@ const navItems: MenuProps["items"] = [
     label: <span className="nav-label">Study Plans</span>,
   },
   {
-    key: "/knowledge-graph",
-    icon: <ApartmentOutlined />,
-    label: <span className="nav-label">Knowledge Graph</span>,
-  },
-  {
     key: "/ai-tutor",
     icon: <ReadOutlined />,
     label: <span className="nav-label">Ai Tutoring</span>,

@@ -1,9 +1,11 @@
-﻿using BE.DTOs.Chat;
+﻿using BE.Common;
+using BE.DTOs.Chat;
 using BE.Models;
 using BE.ServiceContracts;
 using BE.Common.Exceptions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace BE.Controllers;
 
@@ -17,19 +19,25 @@ public class ChatSessionController : ControllerBase
     private readonly IChatSessionService _sessionService;
     private readonly IJobService _jobService;
     private readonly IJobQueueService _jobQueueService;
+    private readonly IUsageService _usageService;
+    private readonly BE.Data.AppDbContext _db;
 
     public ChatSessionController(
         ICurrentUserService currentUserService,
         IUserService userService,
         IChatSessionService sessionService,
         IJobService jobService,
-        IJobQueueService jobQueueService)
+        IJobQueueService jobQueueService,
+        IUsageService usageService,
+        BE.Data.AppDbContext db)
     {
         _currentUserService = currentUserService;
         _userService = userService;
         _sessionService = sessionService;
         _jobService = jobService;
         _jobQueueService = jobQueueService;
+        _usageService = usageService;
+        _db = db;
     }
 
     [HttpPost]
@@ -79,6 +87,33 @@ public class ChatSessionController : ControllerBase
 
         // Validate session ownership (throws if not owned)
         await _sessionService.GetMessagesAsync(user.Id, id);
+
+        // Same CV-required gate as ChatController.SendMessage — resuming a
+        // paused study plan is still "chatting," so it shouldn't be reachable
+        // by a user who hasn't confirmed a resume upload.
+        var hasConfirmedResume = await _db.ResumeFiles.AnyAsync(r => r.UserId == user.Id && r.IsConfirmed);
+        if (!hasConfirmedResume)
+        {
+            return StatusCode(412, new { message = "Upload and confirm your CV before starting a chat.", code = "CV_REQUIRED" });
+        }
+
+        // Same daily free-tier quota gate as ChatController.SendMessage.
+        // Without this, a free-tier user who's exhausted their quota could
+        // keep creating jobs indefinitely via this endpoint instead.
+        var plan = _currentUserService.GetPlan();
+        if (!PlanTier.AtLeast(plan, "pro"))
+        {
+            var (allowed, retryAfter, remaining) = await _usageService.TryConsumeMessageAsync(user.Id);
+            if (!allowed)
+            {
+                return StatusCode(429, new
+                {
+                    message = "Daily free message limit reached. Upgrade to Pro for unlimited messages.",
+                    retryAfterSeconds = (int)retryAfter!.Value.TotalSeconds
+                });
+            }
+            Response.Headers["X-Messages-Remaining"] = remaining.ToString();
+        }
 
         // Ensure the original job exists and belongs to the user
         var original = await _jobService.GetForUserAsync(request.JobId, user.Id);

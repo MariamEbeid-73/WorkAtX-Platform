@@ -40,6 +40,7 @@ export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCard
     const [downloadingPdf, setDownloadingPdf] = useState(false);
     const [selectedChoices, setSelectedChoices] = useState<TechChoiceSelections>({});
     const [submitting, setSubmitting] = useState(false);
+    const [submitted, setSubmitted] = useState(false);
     const reportRef = useRef<HTMLDivElement>(null);
 
     const ga = result.gap_analysis;
@@ -112,10 +113,20 @@ export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCard
     };
 
     const handleSubmitChoices = async () => {
-        if (!onSubmitTechChoices) return;
+        if (!onSubmitTechChoices || submitted) return;
         setSubmitting(true);
         try {
             await onSubmitTechChoices(selectedChoices);
+            // Lock the card — resumeStudyPlanWithSelections already handles
+            // its own errors internally (surfaces via the global sendError
+            // banner) and never rethrows today, so reaching here means the
+            // call was accepted. Prevents re-clicking from queuing a second
+            // resume job for the same underlying jobId (BE has no
+            // idempotency guard on resumeFromJobId).
+            setSubmitted(true);
+        } catch {
+            // Defensive: if onSubmitTechChoices' contract ever changes to
+            // rethrow, don't leave the button stuck on a spinner forever.
         } finally {
             setSubmitting(false);
         }
@@ -244,6 +255,7 @@ export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCard
                                 <Radio.Group
                                     value={selectedChoices[cat.category]}
                                     onChange={(e) => handleChoiceChange(cat.category, e.target.value)}
+                                    disabled={submitted}
                                 >
                                     <Flex wrap gap={8}>
                                         {cat.options.map((opt: any, j: number) => {
@@ -261,16 +273,25 @@ export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCard
                     </Flex>
 
                     {onSubmitTechChoices && (
-                        <Button
-                            type="primary"
-                            icon={<SendOutlined />}
-                            loading={submitting}
-                            disabled={Object.keys(selectedChoices).length === 0}
-                            onClick={handleSubmitChoices}
-                            style={{ alignSelf: 'flex-start', marginTop: 4 }}
-                        >
-                            Save & Build Study Plan
-                        </Button>
+                        submitted ? (
+                            <Flex align="center" gap={8} style={{ marginTop: 4 }}>
+                                <CheckOutlined style={{ color: 'var(--color-primary-400, #7C3AED)' }} />
+                                <Text style={{ fontSize: 13 }}>
+                                    Selections sent — building your study plan.
+                                </Text>
+                            </Flex>
+                        ) : (
+                            <Button
+                                type="primary"
+                                icon={<SendOutlined />}
+                                loading={submitting}
+                                disabled={techChoices.some((cat) => !selectedChoices[cat.category])}
+                                onClick={handleSubmitChoices}
+                                style={{ alignSelf: 'flex-start', marginTop: 4 }}
+                            >
+                                Save & Build Study Plan
+                            </Button>
+                        )
                     )}
                 </div>
             )}

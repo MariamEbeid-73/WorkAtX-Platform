@@ -95,7 +95,7 @@ export function useChat() {
                     if (typeof r === "object" && (r.summary || r.missing_skills || r.recommendations)) {
                         return {
                             gap_analysis: {
-                                per_job_match_scores: [],
+                                per_job_match_scores: r.per_job_match_scores ?? [],
                                 skill_coverage_across_all_jobs: r.skill_coverage_across_all_jobs ?? 0,
                                 matched: r.matched ?? [],
                                 missing: (r.missing_skills ?? []).map((ms: any) => ({
@@ -187,6 +187,8 @@ export function useChat() {
     /** Resume a paused study-plan by submitting tech-choice selections. */
     const resumeStudyPlanWithSelections = useCallback(
         async (jobId: string, selections: TechChoiceSelections) => {
+            if (isSending) return;
+
             setSendError(null);
             setIsSending(true);
             const controller = new AbortController();
@@ -217,13 +219,14 @@ export function useChat() {
                 refreshSessions();
                 if (activeSessionRef.current) await loadMessages(activeSessionRef.current);
             } catch (err) {
+                if (err instanceof DOMException && err.name === "AbortError") return;
                 setSendError(friendlyError(err));
             } finally {
                 setIsSending(false);
                 setPendingStage(null);
             }
         },
-        [getToken, loadMessages, refreshSessions]
+        [getToken, isSending, loadMessages, refreshSessions]
     );
 
     // Abort on unmount
