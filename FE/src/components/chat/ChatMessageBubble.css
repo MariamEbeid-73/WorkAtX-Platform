@@ -170,3 +170,7 @@
   margin: 0 0 8px;
   color: var(--text-secondary);
 }
+
+.chat-bubble--wide {
+    max-width: min(760px, 92%);
+}

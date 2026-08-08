@@ -28,3 +28,5 @@ public record ChatMessageResponse(
 public record RenameSessionRequest(string Title);
 
 public record SendMessageResponse(Guid JobId, Guid SessionId);
+
+public record SubmitTechChoicesRequest(Guid JobId, System.Text.Json.JsonElement Selections);

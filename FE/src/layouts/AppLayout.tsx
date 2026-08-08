@@ -31,11 +31,21 @@ const navItems: MenuProps["items"] = [
     key: "/dashboard",
     icon: <UserOutlined />,
     label: <span className="nav-label">Profile</span>,
-  },
+    },
+    {
+        key: "/knowledge-graph",
+        icon: <ApartmentOutlined />,
+        label: <span className="nav-label">Knowledge Graph</span>,
+    },
   {
     key: "/geni",
     icon: <RobotOutlined />,
     label: <span className="nav-label">GenAi</span>,
+  },
+    {
+    key: "/plans",
+    icon: <ScheduleOutlined />,
+    label: <span className="nav-label">Study Plans</span>,
   },
   {
     key: "/knowledge-graph",
@@ -57,11 +67,7 @@ const navItems: MenuProps["items"] = [
     icon: <FileSearchOutlined />,
     label: <span className="nav-label">Cv Optimizer</span>,
   },
-  {
-    key: "/plans",
-    icon: <ScheduleOutlined />,
-    label: <span className="nav-label">Plans</span>,
-  },
+
 ];
 
 export function AppLayout() {
