@@ -19,33 +19,20 @@ def call_process_api(
     session_id: str = None,
     message: str = None,
     context_summary: str = None,
-    resume_from_job_id: str = None,
-    selections: dict = None,
     timeout: int = 90,
 ) -> dict:
     if _mock_ai_enabled():
         logger.info(f"[AI Client - MOCK] Simulating process API response for user={user_id}, job={job_id}, session={session_id}")
 
-        if resume_from_job_id is not None:
-            # Resuming a paused study-plan job with the user's tech_choices
-            # selections — there's no free-text `message` for this job type,
-            # so it needs its own branch rather than falling through to the
-            # message.lower() checks below (which would crash on None).
-            logger.info(
-                f"[AI Client - MOCK] Simulating resume of job={resume_from_job_id} "
-                f"with selections={selections}"
-            )
-            return {
-                "responseType": "study_plan",
-                "summary": "Mock 30-day study plan ready (resumed with your selections)",
-                "weeks": [{"week": 1, "focus": "Fundamentals"}],
-                "selections_applied": selections,
-            }
-
+        # Every chat job — a normal message or a resumed study-plan request
+        # (synthesized into plain language by
+        # ChatSessionController.SubmitTechChoices before the job is even
+        # created) — always has a `message`. There's a single code path
+        # here; the AI is one-shot per job and has no notion of "resuming"
+        # a prior job.
         if message is None:
             raise ValueError(
-                f"call_process_api requires 'message' when resume_from_job_id is not set "
-                f"(job_id={job_id})"
+                f"call_process_api requires 'message' (job_id={job_id})"
             )
 
         msg_lower = message.lower()
@@ -136,9 +123,6 @@ def call_process_api(
         "message": message,
         "context_summary": context_summary,
     }
-    if resume_from_job_id is not None:
-        payload["resume_from_job_id"] = resume_from_job_id
-        payload["selections"] = selections
 
     logger.info(f"[AI Client] Calling Unified Process API at {url} for job_id={job_id}, session_id={session_id}")
     response = requests.post(url, json=payload, timeout=timeout)

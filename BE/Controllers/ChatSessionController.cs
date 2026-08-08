@@ -1,4 +1,5 @@
-﻿using BE.Common;
+﻿using System.Text.Json;
+using BE.Common;
 using BE.DTOs.Chat;
 using BE.Models;
 using BE.ServiceContracts;
@@ -86,7 +87,7 @@ public class ChatSessionController : ControllerBase
         var user = await CurrentUserAsync();
 
         // Validate session ownership (throws if not owned)
-        await _sessionService.GetMessagesAsync(user.Id, id);
+        var session = await GetOwnedSessionAsync(user.Id, id);
 
         // Same CV-required gate as ChatController.SendMessage — resuming a
         // paused study plan is still "chatting," so it shouldn't be reachable
@@ -115,7 +116,16 @@ public class ChatSessionController : ControllerBase
             Response.Headers["X-Messages-Remaining"] = remaining.ToString();
         }
 
-        // Ensure the original job exists and belongs to the user
+        // JobId is used ONLY to verify the referenced gap-analysis job is
+        // real and belongs to this session — a server-side consistency
+        // check, not something the AI needs. The AI is stateless per job
+        // (it replies once and the job ends — there's no "resuming" a job
+        // at that layer), and it already has userId + sessionId on every
+        // chat job payload, which is all it needs to pull the latest gap
+        // analysis for this session via
+        // GET /api/internal/ai/gap-analysis/{userId}?sessionId=... if it
+        // wants the full structured data. So the original job id is never
+        // forwarded into the new job's payload below.
         var original = await _jobService.GetForUserAsync(request.JobId, user.Id);
         if (original is null)
             throw new NotFoundException($"Job {request.JobId} not found.");
@@ -123,16 +133,42 @@ public class ChatSessionController : ControllerBase
         if (original.SessionId != id)
             throw new BadRequestException("The specified job does not belong to this session.");
 
-        // Create a resume job that the worker will pick up. Payload includes
-        // the original job id and the user's selections.
+        // Turn the user's radio-button selections into a normal-language chat
+        // message. This job is otherwise indistinguishable from one created
+        // by ChatController.SendMessage — same payload shape, same "message
+        // reaches the same AI endpoint, AI decides what to do" flow.
+        var synthesizedMessage = BuildSelectionsMessage(request.Selections);
+
+        // Same payload shape as ChatController.SendMessage — userId,
+        // sessionId, message, contextSummary. No resumeFromJobId/selections:
+        // the AI treats this exactly like any other chat turn.
         var job = await _jobService.CreateAsync(user.Id, JobType.Chat, new
         {
             userId = user.Id,
             sessionId = id,
-            resumeFromJobId = request.JobId,
-            selections = request.Selections,
+            message = synthesizedMessage,
+            contextSummary = session.SummaryText,
         }, id);
 
+        // Persist the synthesized text as the user's turn — exactly like
+        // ChatController.SendMessage does for a normal message. This is what
+        // makes session reconstruction show what the user actually chose,
+        // and what lets InternalAiController.SaveChatResultAsync's "last
+        // user message for this job" lookup find a real turn (previously it
+        // always fell back to an empty string here, so the rolling session
+        // summary got a blank "User asked: " entry for every resumed plan).
+        _db.ChatMessages.Add(new ChatMessage
+        {
+            SessionId = id,
+            UserId = user.Id,
+            Role = ChatMessageRole.User,
+            Content = synthesizedMessage,
+            JobId = job.Id,
+        });
+
+        session.LastMessageAt = DateTimeOffset.UtcNow;
+
+        await _db.SaveChangesAsync();
         await _jobQueueService.PublishAsync(job.Id);
 
         return Ok(new SendMessageResponse(job.Id, id));
@@ -141,4 +177,45 @@ public class ChatSessionController : ControllerBase
     private async Task<User> CurrentUserAsync() =>
         (HttpContext.Items["CurrentUser"] as User)
         ?? await _userService.GetOrCreateUserAsync(_currentUserService.GetClerkUserId(), _currentUserService.GetEmail());
+
+    private async Task<ChatSession> GetOwnedSessionAsync(Guid userId, Guid sessionId)
+    {
+        var session = await _db.ChatSessions.FirstOrDefaultAsync(s => s.Id == sessionId)
+            ?? throw new NotFoundException("Chat session not found.");
+        if (session.UserId != userId)
+            throw new ForbiddenException("You do not have access to this session.");
+        return session;
+    }
+
+    /// <summary>
+    /// Renders the flat { category: choice } selections map (see FE
+    /// TechChoiceSelections) as a single readable sentence the AI service can
+    /// act on like any other chat message, e.g.:
+    /// "I've chosen: Containerization = Docker, Cloud Platform = AWS. Build
+    /// my study plan around these choices."
+    /// Falls back to a generic sentence if selections is missing, not an
+    /// object, or empty — the job still needs a non-null `message`.
+    /// </summary>
+    private static string BuildSelectionsMessage(JsonElement selections)
+    {
+        const string fallback = "I've made my technology selections. Build my study plan around these choices.";
+
+        if (selections.ValueKind != JsonValueKind.Object)
+            return fallback;
+
+        var parts = new List<string>();
+        foreach (var prop in selections.EnumerateObject())
+        {
+            var value = prop.Value.ValueKind == JsonValueKind.String
+                ? prop.Value.GetString()
+                : prop.Value.ToString();
+
+            if (!string.IsNullOrWhiteSpace(value))
+                parts.Add($"{prop.Name} = {value}");
+        }
+
+        return parts.Count == 0
+            ? fallback
+            : $"I've chosen: {string.Join(", ", parts)}. Build my study plan around these choices.";
+    }
 }

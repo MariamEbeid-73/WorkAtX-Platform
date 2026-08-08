@@ -12,18 +12,18 @@ def handle_chat(task, job_id: str, job_data: dict):
     session_id = payload.get("sessionId")
     message = payload.get("message")
     context_summary = payload.get("contextSummary")
-    resume_from_job_id = payload.get("resumeFromJobId")
-    selections = payload.get("selections")
 
-    if resume_from_job_id is None and message is None:
-        # Every chat job is either a normal message or a tech-choices resume
-        # (ChatSessionController.SubmitTechChoices sends resumeFromJobId +
-        # selections with no message). Neither present means the payload
-        # is malformed — fail loudly here instead of passing message=None
-        # down into ai_client, where it used to crash on message.lower().
+    # Every "chat" job — a normal user message OR a resumed study-plan
+    # request from ChatSessionController.SubmitTechChoices — always carries
+    # a `message`. The tech-choices flow synthesizes a normal-language
+    # sentence from the user's selections on the BE side before creating the
+    # job, so the AI never needs to know this is anything other than an
+    # ordinary chat turn, and there's nothing else this handler needs to
+    # branch on. A missing message means the payload is malformed — fail
+    # loudly here instead of passing None down into ai_client.
+    if message is None:
         raise ValueError(
-            f"Chat job {job_id} payload has neither 'message' nor "
-            f"'resumeFromJobId': {payload!r}"
+            f"Chat job {job_id} payload is missing 'message': {payload!r}"
         )
 
     # Add initial progress tick
@@ -35,8 +35,6 @@ def handle_chat(task, job_id: str, job_data: dict):
         session_id=session_id,
         message=message,
         context_summary=context_summary,
-        resume_from_job_id=resume_from_job_id,
-        selections=selections,
     )
 
     # Keep original strict validation
