@@ -19,8 +19,12 @@ STATUS_FAILED = "failed"
     name="worker.tasks.process_job",
     bind=True,
     max_retries=3,
-    soft_time_limit=120,
-    time_limit=130
+    # Must exceed ai_client's own timeout (300s, see app/ai_client.py) or
+    # Celery kills the task mid-request before the AI service's own HTTP
+    # client even times out — a cold gap-analysis scrape routinely takes
+    # several minutes end to end.
+    soft_time_limit=330,
+    time_limit=360
 )
 def process_job(self, jobId: str = None, **kwargs):
     return _process_job_impl(self, jobId=jobId, **kwargs)

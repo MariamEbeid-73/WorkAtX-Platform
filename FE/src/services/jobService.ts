@@ -23,7 +23,10 @@ export function getJobResult(
 }
 
 const POLL_INTERVAL_MS = 1500;
-const POLL_TIMEOUT_MS = 120_000; // 2 minutes — matches typical AI worker SLA
+// Must exceed the worker's Celery time_limit (360s, Worker/tasks/process_job.py)
+// or the UI gives up before the worker itself does on a cold gap-analysis
+// scrape (real scrapes routinely run 1-4 minutes).
+const POLL_TIMEOUT_MS = 370_000;
 
 /**
  * Polls a job until it completes or fails, then resolves with its final

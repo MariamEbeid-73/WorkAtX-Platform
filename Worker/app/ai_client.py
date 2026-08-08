@@ -7,6 +7,12 @@ from progress_publisher import publish_progress
 logger = logging.getLogger(__name__)
 
 AI_SERVICE_BASE_URL = os.getenv("AI_SERVICE_BASE_URL", "http://host.docker.internal:8000")
+# The AI service's /api/v1/ai/* endpoints require this header (constant-time
+# compare against the same secret) — same env var backend_client.py already
+# reads for calls to our own backend, since both sides agreed on one shared
+# service-to-service secret rather than a per-integration one.
+AI_SERVICE_TOKEN = os.getenv("SERVICE_AUTH_TOKEN", "dev-service-token")
+AI_SERVICE_HEADERS = {"X-Service-Token": AI_SERVICE_TOKEN}
 
 
 def _mock_ai_enabled() -> bool:
@@ -19,7 +25,7 @@ def call_process_api(
     session_id: str = None,
     message: str = None,
     context_summary: str = None,
-    timeout: int = 90,
+    timeout: int = 300,
 ) -> dict:
     if _mock_ai_enabled():
         logger.info(f"[AI Client - MOCK] Simulating process API response for user={user_id}, job={job_id}, session={session_id}")
@@ -125,12 +131,12 @@ def call_process_api(
     }
 
     logger.info(f"[AI Client] Calling Unified Process API at {url} for job_id={job_id}, session_id={session_id}")
-    response = requests.post(url, json=payload, timeout=timeout)
+    response = requests.post(url, json=payload, headers=AI_SERVICE_HEADERS, timeout=timeout)
     response.raise_for_status()
     return response.json()
 
 
-def call_analysis_1_api(cv_bytes: bytes, github_url: str = None, linkedin_url: str = None, timeout: int = 60) -> dict:
+def call_analysis_1_api(cv_bytes: bytes, github_url: str = None, linkedin_url: str = None, timeout: int = 120) -> dict:
     if _mock_ai_enabled():
         logger.info("[AI Client - MOCK] Simulating CV Parse API response")
         return {
@@ -208,7 +214,7 @@ def call_analysis_1_api(cv_bytes: bytes, github_url: str = None, linkedin_url: s
         data["linkedin_url"] = valid_linkedin
 
     logger.info(f"[AI Client] Calling Parse CV API at {url}")
-    response = requests.post(url, files=files, data=data, timeout=timeout)
+    response = requests.post(url, files=files, data=data, headers=AI_SERVICE_HEADERS, timeout=timeout)
     response.raise_for_status()
     return response.json()
 

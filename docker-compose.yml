@@ -2,6 +2,7 @@ services:
   db:
     image: postgres:16-alpine
     container_name: workx-db
+    restart: unless-stopped
     environment:
       POSTGRES_USER: "${DB_USER:-postgres}"
       POSTGRES_PASSWORD: "${DB_PASSWORD:-WorkX@Password2026}"
@@ -20,17 +21,19 @@ services:
   redis:
     image: redis:7-alpine
     container_name: workx-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
-      retries: 5 
+      retries: 5
 
   minio:
     image: minio/minio:latest
     container_name: workx-minio
+    restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
@@ -56,6 +59,7 @@ services:
         - workx-be:latest
     image: workx-be:latest
     container_name: workx-be
+    restart: unless-stopped
     environment:
       ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Development}"
       Clerk__Authority: "${CLERK_AUTHORITY:-https://factual-reptile-75.clerk.accounts.dev}"
@@ -67,10 +71,17 @@ services:
       S3__SecretKey: "${AWS_SECRET_ACCESS_KEY:-minioadmin}"
       S3__Region: "${AWS_REGION:-us-east-1}"
       OAuth__GitHub__ClientId: "${GITHUB_CLIENT_ID:-Ov23liacWpZf9ZDCpiGt}"
-      OAuth__GitHub__ClientSecret: "${GITHUB_CLIENT_SECRET:-47aaaa6b4d8230ecd1d6f1306ce8b7730376386b}"
+      # No committed fallback for real secrets — a missing value must fail
+      # loud (docker compose's ${VAR:?msg} syntax), not silently fall back to
+      # a value that used to sit here in plaintext. See INTEGRATION-REPORT.md:
+      # this secret and Encryption__Key below were both committed in the
+      # clear on main (and a LinkedIn secret on staging-deployment) and
+      # should be treated as compromised — rotate them, this fix alone does
+      # not un-leak history that's already pushed.
+      OAuth__GitHub__ClientSecret: "${GITHUB_CLIENT_SECRET:?Set GITHUB_CLIENT_SECRET in .env — do not reuse the value formerly hardcoded here, rotate it}"
       OAuth__GitHub__RedirectUri: "http://localhost:5000/oauth/github/callback"
       OAuth__FrontendCallbackUrl: "${FRONTEND_URL:-http://localhost:4200}/oauth-return"
-      Encryption__Key: "${ENCRYPTION_KEY:-2JGGQQujI4auE8XfUHisIVNJ3AGayFN4ygljCRFmgms=}"
+      Encryption__Key: "${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in .env (openssl rand -base64 32) — do not reuse the value formerly hardcoded here, rotate it}"
       Redis__Configuration: "redis:6379,abortConnect=false"
       Redis__CeleryTask: "${CELERY_TASK:-worker.tasks.process_job}"
       Redis__CeleryQueue: "${CELERY_QUEUE:-celery}"
@@ -94,6 +105,7 @@ services:
   minio-init:
     image: minio/mc:latest
     container_name: workx-minio-init
+    restart: "no"
     environment:
       MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
@@ -112,6 +124,7 @@ services:
         - workx-fe:latest
     image: workx-fe:latest
     container_name: workx-fe
+    restart: unless-stopped
     environment:
       VITE_API_URL: "${VITE_API_URL:-http://localhost:5000}"
       VITE_CLERK_PUBLISHABLE_KEY: "${VITE_CLERK_PUBLISHABLE_KEY:-pk_test_ZmFjdHVhbC1yZXB0aWxlLTc1LmNsZXJrLmFjY291bnRzLmRldiQ}"
@@ -128,6 +141,7 @@ services:
         dockerfile: Dockerfile
       image: workx-worker:latest
       container_name: workx-worker
+      restart: unless-stopped
       environment:
               AI_SERVICE_BASE_URL: "${AI_SERVICE_BASE_URL:-http://host.docker.internal:8000}"
               REDIS_URL: "redis://redis:6379/0"

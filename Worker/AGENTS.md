@@ -28,12 +28,12 @@ pytest tests/ -v
 3. Route by `jobType`: `chat` → `handle_chat`, `analysis1` → `handle_analysis_1`
 4. POST result back via `/api/internal/ai/jobs/{jobId}/result` (`completed` + `resultJson`, or `failed` + `error`)
 
-Retry policy: `max_retries=3`, exponential backoff `5 * 2^retries`, `soft_time_limit=120`/`time_limit=130`. 4xx from BE is fatal (no retry); 5xx/network/timeout retries then dead-letters. Never leave a job stuck in `processing` — `_safe_submit_failed_status` always resolves terminal failures.
+Retry policy: `max_retries=3`, exponential backoff `5 * 2^retries`, `soft_time_limit=330`/`time_limit=360` (raised from 120/130 — must exceed ai_client's own 300s timeout, or Celery kills a cold gap-analysis job before the AI service's HTTP client even times out). 4xx from BE is fatal (no retry); 5xx/network/timeout retries then dead-letters. Never leave a job stuck in `processing` — `_safe_submit_failed_status` always resolves terminal failures.
 
 ## Modules
 
-- `app/backend_client.py` — HTTP client to BE. **Gotcha:** reads env var `SERVICE_TOKEN`, but compose/`.env.development` set `SERVICE_AUTH_TOKEN` — works only because both default to `dev-service-token`. Keep in sync when you add real auth.
-- `app/ai_client.py` — calls the real AI service at `AI_SERVICE_BASE_URL` (default `http://host.docker.internal:8000`; compose sets the same via `extra_hosts: host.docker.internal`). **`MOCK_AI=true` by default** — returns canned `chat`/`gap_analysis`/`study_plan`/`analysis1` responses so the whole pipeline runs with no AI backend. Set `MOCK_AI=false` to hit the real service.
+- `app/backend_client.py` — HTTP client to BE, reads `SERVICE_AUTH_TOKEN` (matches compose/`.env.development`).
+- `app/ai_client.py` — calls the real AI service at `AI_SERVICE_BASE_URL` (default `http://host.docker.internal:8000`; compose sets the same via `extra_hosts: host.docker.internal`), sending `X-Service-Token: $SERVICE_AUTH_TOKEN` — the AI service's `/api/v1/ai/*` routes constant-time-compare against the same shared secret `backend_client.py` uses for calls the other direction. **`MOCK_AI=true` by default** — returns canned `chat`/`gap_analysis`/`study_plan`/`analysis1` responses so the whole pipeline runs with no AI backend. Set `MOCK_AI=false` to hit the real service.
 - `progress_publisher.py` — `XADD`s `{job_id, stage, percent}` to the Redis stream `job-progress-stream`. The BE `JobProgressStreamConsumer` turns these into DB updates + SignalR pushes. `stage` text is treated as opaque by BE — keep it user-friendly.
 - `tasks/chat_job.py`, `tasks/analysis1_job.py` — per-job-type handlers (download CV from a BE-issued pre-signed MinIO URL, submit profile scores, etc.).
 
