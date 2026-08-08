@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Flex, Typography, Input, Button, Tooltip, Alert, Avatar } from 'antd';
 import {
   SendOutlined,
@@ -13,6 +13,7 @@ import { useUser } from '@clerk/react';
 import { useChat } from '../hooks/useChat';
 import { ChatSidebar } from '../components/chat/ChatSidebar';
 import { ChatMessageBubble } from '../components/chat/ChatMessageBubble';
+import type { TechChoiceSelections } from '../types/chat';
 import './GeniPage.css';
 
 const { Title, Text } = Typography;
@@ -69,6 +70,7 @@ export function GeniPage() {
     renameSession,
     archiveSession,
     sendMessage,
+    resumeStudyPlanWithSelections,
   } = useChat();
 
   useEffect(() => {
@@ -87,6 +89,20 @@ export function GeniPage() {
     sendMessage(content);
     setInput('');
   };
+
+  /**
+   * Bridges ChatMessageBubble's per-message callback to useChat's
+   * session-scoped resumeStudyPlanWithSelections. Guards against the
+   * (shouldn't-happen-in-practice) case of no active session, since a
+   * gap_analysis message can only exist inside one.
+   */
+  const handleResumeWithSelections = useCallback(
+    (jobId: string, selections: TechChoiceSelections) => {
+      if (!resumeStudyPlanWithSelections) return Promise.resolve();
+      return resumeStudyPlanWithSelections(jobId, selections);
+    },
+    [resumeStudyPlanWithSelections],
+  );
 
   const isEmptyState = !activeSessionId && messages.length === 0;
 
@@ -203,7 +219,12 @@ export function GeniPage() {
 
             {!messagesLoading &&
               messages.map((m) => (
-                <ChatMessageBubble key={m.id} message={m} userInitials={initials} />
+                <ChatMessageBubble
+                  key={m.id}
+                  message={m}
+                  userInitials={initials}
+                  onResumeWithSelections={handleResumeWithSelections}
+                />
               ))}
 
             <div ref={messagesEndRef} />
