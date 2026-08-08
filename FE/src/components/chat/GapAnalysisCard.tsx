@@ -5,12 +5,9 @@ import {
     CheckOutlined,
     WarningOutlined,
     SendOutlined,
-    FilePdfOutlined,
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 import type { GapAnalysisResult, TechChoiceSelections, TechChoiceCategory } from '../../types/chat';
 import { normalizeTechChoices } from '../../utils/techChoices';
 import './GapAnalysisCard.css';
@@ -37,7 +34,6 @@ function importanceBadgeClass(importance: string): string {
 
 export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCardProps) {
     const [copied, setCopied] = useState(false);
-    const [downloadingPdf, setDownloadingPdf] = useState(false);
     const [selectedChoices, setSelectedChoices] = useState<TechChoiceSelections>({});
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
@@ -68,43 +64,6 @@ export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCard
             setTimeout(() => setCopied(false), 2000);
         } catch {
             /* clipboard disabled */
-        }
-    };
-
-    const handleDownloadPdf = async () => {
-        if (!reportRef.current) return;
-        setDownloadingPdf(true);
-        const node = reportRef.current;
-        node.classList.add('gap-card__report-pdf--export');
-        try {
-            const canvas = await html2canvas(node, {
-                scale: 2,
-                useCORS: true,
-                backgroundColor: '#ffffff',
-            });
-            const imgData = canvas.toDataURL('image/png');
-            const pdf = new jsPDF('p', 'mm', 'a4');
-            const imgWidth = 210;
-            const pageHeight = 297;
-            const imgHeight = (canvas.height * imgWidth) / canvas.width;
-            let heightLeft = imgHeight;
-            let position = 0;
-
-            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-            heightLeft -= pageHeight;
-
-            while (heightLeft >= 0) {
-                position = heightLeft - imgHeight;
-                pdf.addPage();
-                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-                heightLeft -= pageHeight;
-            }
-            pdf.save('gap-analysis-report.pdf');
-        } catch (err) {
-            console.error('PDF export failed:', err);
-        } finally {
-            node.classList.remove('gap-card__report-pdf--export');
-            setDownloadingPdf(false);
         }
     };
 
@@ -339,22 +298,13 @@ export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCard
                         label: 'Full written report',
                         children: (
                             <>
-                                <Flex justify="flex-end" gap={8} style={{ marginBottom: 12 }}>
+                                <Flex justify="flex-end" style={{ marginBottom: 12 }}>
                                     <Button
                                         size="small"
                                         icon={copied ? <CheckOutlined /> : <CopyOutlined />}
                                         onClick={handleCopyReport}
                                     >
                                         {copied ? 'Copied' : 'Copy'}
-                                    </Button>
-                                    <Button
-                                        size="small"
-                                        type="primary"
-                                        icon={<FilePdfOutlined />}
-                                        loading={downloadingPdf}
-                                        onClick={handleDownloadPdf}
-                                    >
-                                        Download .pdf
                                     </Button>
                                 </Flex>
 
