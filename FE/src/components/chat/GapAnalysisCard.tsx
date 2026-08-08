@@ -57,9 +57,10 @@ export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCard
     );
 
     const handleCopyReport = async () => {
-        if (!result.user_report) return;
+        const textToCopy = result.user_report || ga?.summary || '';
+        if (!textToCopy) return;
         try {
-            await navigator.clipboard.writeText(result.user_report);
+            await navigator.clipboard.writeText(textToCopy);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         } catch {
