@@ -171,6 +171,16 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
 
   const handleLaunch = async () => {
     setProcessing(true);
+
+    // ResumeService.ConfirmUploadAsync on the backend already creates +
+    // queues the analysis1 job as soon as the CV is confirmed (or reuses
+    // an in-flight one). We must NOT call POST /api/analysis1/start again
+    // here — that would queue a second, redundant parse for the same
+    // resume and can race with the one confirm already started. Instead
+    // we capture the analysisJobId that confirm returns and hand it to
+    // the Knowledge Graph page so it can just watch that job.
+    let analysisJobId: string | null = null;
+
     try {
       // Only upload if user selected a new file
       if (resumeFile && !alreadyHasResume) {
@@ -179,7 +189,10 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
         if (!token) throw new Error('Not authenticated');
         const { resumeId, uploadUrl } = await createUploadIntent(token, file);
         await uploadToMinIO(uploadUrl, file, () => {});
-        await confirmUpload(token, resumeId);
+        const confirmResult = await confirmUpload(token, resumeId);
+        // Null when this exact resume was already parsed and isn't stale
+        // (idempotent re-confirm) — nothing new to watch in that case.
+        analysisJobId = confirmResult.analysisJobId;
       }
     } catch (err: any) {
       msgApi.error(err?.message ?? 'Upload failed. Please try again.');
@@ -188,8 +201,18 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
     }
     setProcessing(false);
     onComplete();
-    // Navigate to Knowledge Graph and auto-trigger analysis
-    navigate('/knowledge-graph?analyze=true');
+
+    // Hand off the real analysisJobId (if one was created) so Knowledge
+    // Graph can watch that exact job instead of starting a new one. When
+    // there's no fresh job (returning user with an existing, non-stale
+    // resume, or the resume was already parsed), navigate with no jobId —
+    // the page will just show the last completed analysis, or its idle
+    // state with a manual "Analyze" action, rather than auto-queuing work.
+    navigate(
+      analysisJobId
+        ? `/knowledge-graph?jobId=${analysisJobId}`
+        : '/knowledge-graph',
+    );
   };
 
   // ── Step 0: Resume ────────────────────────────────────────────────────────
