@@ -12,6 +12,19 @@ def handle_chat(task, job_id: str, job_data: dict):
     session_id = payload.get("sessionId")
     message = payload.get("message")
     context_summary = payload.get("contextSummary")
+    resume_from_job_id = payload.get("resumeFromJobId")
+    selections = payload.get("selections")
+
+    if resume_from_job_id is None and message is None:
+        # Every chat job is either a normal message or a tech-choices resume
+        # (ChatSessionController.SubmitTechChoices sends resumeFromJobId +
+        # selections with no message). Neither present means the payload
+        # is malformed — fail loudly here instead of passing message=None
+        # down into ai_client, where it used to crash on message.lower().
+        raise ValueError(
+            f"Chat job {job_id} payload has neither 'message' nor "
+            f"'resumeFromJobId': {payload!r}"
+        )
 
     # Add initial progress tick
     publish_progress(job_id=job_id, stage="Thinking", percent=10)
@@ -22,6 +35,8 @@ def handle_chat(task, job_id: str, job_data: dict):
         session_id=session_id,
         message=message,
         context_summary=context_summary,
+        resume_from_job_id=resume_from_job_id,
+        selections=selections,
     )
 
     # Keep original strict validation

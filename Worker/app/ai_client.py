@@ -19,15 +19,54 @@ def call_process_api(
     session_id: str = None,
     message: str = None,
     context_summary: str = None,
+    resume_from_job_id: str = None,
+    selections: dict = None,
     timeout: int = 90,
 ) -> dict:
     if _mock_ai_enabled():
         logger.info(f"[AI Client - MOCK] Simulating process API response for user={user_id}, job={job_id}, session={session_id}")
 
-        if "gap" in message.lower() or "senior" in message.lower():
+        if resume_from_job_id is not None:
+            # Resuming a paused study-plan job with the user's tech_choices
+            # selections — there's no free-text `message` for this job type,
+            # so it needs its own branch rather than falling through to the
+            # message.lower() checks below (which would crash on None).
+            logger.info(
+                f"[AI Client - MOCK] Simulating resume of job={resume_from_job_id} "
+                f"with selections={selections}"
+            )
+            return {
+                "responseType": "study_plan",
+                "summary": "Mock 30-day study plan ready (resumed with your selections)",
+                "weeks": [{"week": 1, "focus": "Fundamentals"}],
+                "selections_applied": selections,
+            }
+
+        if message is None:
+            raise ValueError(
+                f"call_process_api requires 'message' when resume_from_job_id is not set "
+                f"(job_id={job_id})"
+            )
+
+        msg_lower = message.lower()
+
+        # Trigger 1: Gap Analysis with Radio Buttons (tech_choices)
+        if "gap" in msg_lower or "senior" in msg_lower:
             return {
                 "responseType": "gap_analysis",
-                "summary": "Mock Gap Analysis Complete",
+                "summary": "Strong C# background, missing container orchestration.",
+                "per_job_match_scores": [
+                    {
+                        "role_id": "job-101",
+                        "role": "Principal .NET Architect",
+                        "company": "Tech Corp",
+                        "match_level": "High Match",
+                        "match_score": 75,
+                    },
+                ],
+                "skill_coverage_across_all_jobs": 75,
+                "jobs_analyzed": 1,
+                "matched": ["C#", ".NET", "SQL Server"],
                 "missing_skills": [
                     {"name": "System Architecture", "importance": "High"},
                     {"name": "Docker & Kubernetes", "importance": "Medium"}
@@ -35,16 +74,55 @@ def call_process_api(
                 "recommendations": [
                     "Build end-to-end microservices with Docker Compose",
                     "Learn Clean Architecture and Repository Patterns"
-                ]
+                ],
+                "awaiting_user_input": True,
+                "tech_choices": [
+                    {
+                        "category": "Containerization",
+                        "options": [
+                            {"id": "docker", "label": "Docker", "description": "Industry standard, huge ecosystem"},
+                            {"id": "podman", "label": "Podman", "description": "Daemonless, rootless alternative"},
+                        ],
+                    },
+                    {
+                        "category": "Cloud Platform",
+                        "options": [
+                            {"id": "aws", "label": "AWS", "description": "Broadest service catalog"},
+                            {"id": "azure", "label": "Azure", "description": "Strong .NET/enterprise integration"},
+                        ],
+                    },
+                ],
             }
 
-        if "plan" in message.lower():
+        # Trigger 2: Gap Analysis Open-Ended Question (tech_choices = [])
+        if "confirm" in msg_lower or "ready" in msg_lower:
+            return {
+                "responseType": "gap_analysis",
+                "summary": "Gap analysis complete. Ready to build your customized learning path.",
+                "per_job_match_scores": [],
+                "skill_coverage_across_all_jobs": 80,
+                "jobs_analyzed": 1,
+                "matched": ["C#", "ASP.NET Core"],
+                "missing_skills": [
+                    {"name": "Microservices", "importance": "High"}
+                ],
+                "recommendations": [
+                    "Focus on domain-driven design and asynchronous queues."
+                ],
+                "awaiting_user_input": True,
+                "tech_choices": [],
+                "user_report": "Are you ready for Geni to generate your weekly study plan?"
+            }
+
+        # Trigger 3: Study Plan
+        if "plan" in msg_lower:
             return {
                 "responseType": "study_plan",
                 "summary": "Mock 30-day study plan ready",
                 "weeks": [{"week": 1, "focus": "Fundamentals"}]
             }
 
+        # Default Chat Response
         return {
             "responseType": "normal_text",
             "reply": "Here is a quick chat response about your career progression."
@@ -58,6 +136,9 @@ def call_process_api(
         "message": message,
         "context_summary": context_summary,
     }
+    if resume_from_job_id is not None:
+        payload["resume_from_job_id"] = resume_from_job_id
+        payload["selections"] = selections
 
     logger.info(f"[AI Client] Calling Unified Process API at {url} for job_id={job_id}, session_id={session_id}")
     response = requests.post(url, json=payload, timeout=timeout)
