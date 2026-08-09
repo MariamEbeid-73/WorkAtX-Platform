@@ -2,6 +2,8 @@ using System.Text.Json;
 using BE.Common;
 using BE.Common.Exceptions;
 using BE.Data;
+using BE.DTOs.Analysis;
+using BE.DTOs.Jobs;
 using BE.Models;
 using BE.ServiceContracts;
 using Microsoft.AspNetCore.Authorization;
@@ -118,5 +120,45 @@ public class AnalysisController : ControllerBase
             result = JsonSerializer.Deserialize<JsonElement>(analysis.ResultJson);
 
         return Ok(ApiResponse<object?>.Ok(result));
+    }
+
+    /// <summary>
+    /// GET /api/analysis1/state
+    /// Returns both the latest usable persisted analysis and any active
+    /// Analysis 1 job. This is read-only and never creates or queues work.
+    /// </summary>
+    [HttpGet("state")]
+    public async Task<IActionResult> GetState()
+    {
+        var user = await _userService.GetOrCreateUserAsync(
+            _currentUserService.GetClerkUserId(),
+            _currentUserService.GetEmail());
+
+        var activeJob = await _db.Jobs
+            .AsNoTracking()
+            .Where(j => j.UserId == user.Id
+                     && j.JobType == JobType.Analysis1
+                     && (j.Status == JobStatus.Queued || j.Status == JobStatus.Processing))
+            .OrderByDescending(j => j.CreatedAt)
+            .Select(j => new JobStatusResponse(
+                j.Id,
+                j.JobType,
+                j.Status,
+                j.Error,
+                j.Stage,
+                j.Progress,
+                j.UpdatedAt))
+            .FirstOrDefaultAsync();
+
+        var analysis = await _db.UserAnalyses
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.UserId == user.Id && !a.IsStale);
+
+        object? result = null;
+        if (analysis is not null && !string.IsNullOrEmpty(analysis.ResultJson))
+            result = JsonSerializer.Deserialize<JsonElement>(analysis.ResultJson);
+
+        return Ok(ApiResponse<AnalysisStateResponse>.Ok(
+            new AnalysisStateResponse(result, activeJob)));
     }
 }

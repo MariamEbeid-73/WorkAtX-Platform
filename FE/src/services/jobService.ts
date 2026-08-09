@@ -79,10 +79,12 @@ export async function waitForJobCompletion(
   return new Promise((resolve, reject) => {
     let settled = false;
     let unsubscribe: (() => void) | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
 
     const finish = (fn: () => void) => {
       if (settled) return;
       settled = true;
+      if (fallbackTimer) clearTimeout(fallbackTimer);
       unsubscribe?.();
       fn();
     };
@@ -103,14 +105,25 @@ export async function waitForJobCompletion(
         );
       }
     })
-      .then((unsub) => {
+      .then(async (unsub) => {
+        if (settled) {
+          unsub();
+          return;
+        }
         unsubscribe = unsub;
+        // The job may have completed before this client joined the SignalR
+        // group. Reconcile once over HTTP so a missed terminal event renders
+        // immediately instead of waiting for the polling fallback.
+        const status = await getJobStatus(token, jobId);
+        if (status.status === "completed" || status.status === "failed") {
+          finish(() => resolve(status));
+        }
       })
       .catch(() => {
         /* socket failed to connect — fall back to polling below */
       });
 
-    const fallbackTimer = setTimeout(() => {
+    fallbackTimer = setTimeout(() => {
       finish(() => {
         pollJobUntilDone(token, jobId, { signal: opts.signal }).then(
           resolve,
@@ -120,7 +133,7 @@ export async function waitForJobCompletion(
     }, SOCKET_FALLBACK_MS);
 
     opts.signal?.addEventListener("abort", () => {
-      clearTimeout(fallbackTimer);
+      if (fallbackTimer) clearTimeout(fallbackTimer);
       finish(() => reject(new DOMException("Polling aborted", "AbortError")));
     });
   });

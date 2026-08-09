@@ -179,6 +179,7 @@ All endpoints except `/api/internal/*` require a **Clerk JWT** (`Authorization: 
 | `/api/jobs/{id}/result` | GET | Clerk + ownership | result object (below) |
 | `/api/analysis1/start` | POST | Clerk | `{ "jobId": "<guid>" }` |
 | `/api/analysis1/latest` | GET | Clerk | `ApiResponse<result|null>` — last completed Analysis 1 result from the DB; never queues a job. `data` is `null` when none exists yet or the stored result is stale |
+| `/api/analysis1/state` | GET | Clerk | `ApiResponse<{ analysis, activeJob }>` — authoritative persisted result plus the newest queued/processing Analysis 1 job; never queues a job |
 | `/resumes/{id}/confirm` | POST | Clerk | `{ "resume": {...}, "analysisJobId": "<guid>|null" }` |
 | `/api/profile/scores` | GET | Clerk | score breakdown or `data: null` |
 | `/api/internal/ai/context/{userId}` | GET | `X-Service-Token` | AI context (below) |
@@ -230,6 +231,35 @@ Manual "re-run analysis" endpoint (also the original onboarding-completion hook)
 - **409** — no confirmed resume exists for the user (upload CV first).
 - **Success** — `{ "jobId": "<guid>" }`, then poll the same `/status` endpoint.
 - **Note:** with auto-trigger on confirm, the frontend no longer needs to call this during onboarding. It exists for manual refresh / retry.
+
+### `GET /api/analysis1/state`
+
+Read-only restore endpoint for the Knowledge Graph. It never creates or queues
+a job. `activeJob` uses the same shape as `GET /api/jobs/{id}/status`.
+
+```json
+{
+  "success": true,
+  "message": null,
+  "data": {
+    "analysis": { "profileAnalysis": {}, "scoreBreakdown": {} },
+    "activeJob": {
+      "jobId": "<guid>",
+      "jobType": "analysis1",
+      "status": "processing",
+      "error": null,
+      "stage": "Analysing profile",
+      "progress": 45,
+      "updatedAt": "2026-08-09T..."
+    }
+  }
+}
+```
+
+- `analysis` is `null` when no non-stale result exists.
+- `activeJob` is `null` when no Analysis 1 job is queued or processing.
+- When both exist during a manual re-analysis, the frontend resumes the active
+  job and renders the newly persisted result after completion.
 
 ### `POST /resumes/{id}/confirm`
 

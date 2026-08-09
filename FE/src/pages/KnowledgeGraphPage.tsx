@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Flex, Typography, Tag, message } from "antd";
+import { Flex, Typography, Tag, message, Spin } from "antd";
 import {
   GithubOutlined,
   LinkedinOutlined,
@@ -19,8 +19,13 @@ import type {
   ScoreMetric,
   ScoreDomain,
 } from "../types/analysis";
-import { waitForJobCompletion, getJobResult } from "../services/jobService";
-import { startAnalysis, getLatestAnalysis } from "../services/analysisService";
+import { waitForJobCompletion } from "../services/jobService";
+import {
+  startAnalysis,
+  getLatestAnalysis,
+  getAnalysisState,
+  type AnalysisState,
+} from "../services/analysisService";
 
 const { Title, Text } = Typography;
 
@@ -84,9 +89,12 @@ function AnalysisLoadingState({
           return;
         }
 
-        const res = await getJobResult(token, jobId);
+        // The backend persists Analysis 1 before broadcasting completion.
+        // Render that authoritative row rather than the polymorphic job payload.
+        const res = await getLatestAnalysis(token);
         if (cancelled) return;
-        onDone(res.result as AnalysisResult);
+        if (!res.data) throw new Error("Completed analysis was not persisted.");
+        onDone(res.data);
       } catch (e) {
         console.error(e);
         if (cancelled) return;
@@ -1748,13 +1756,46 @@ function AnalysisResultState({ data }: { data: AnalysisResult }) {
 // Main Page
 // ─────────────────────────────────────────────────────────────────────────────
 export function KnowledgeGraphPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [pageState, setPageState] = useState<"idle" | "loading" | "result">(
-    "idle",
-  );
+  const [, setSearchParams] = useSearchParams();
+  const [pageState, setPageState] = useState<
+    "restoring" | "idle" | "loading" | "result" | "loadError"
+  >("restoring");
   const [jobId, setJobId] = useState<string | null>(null);
   const [resultData, setResultData] = useState<AnalysisResult | null>(null);
   const { getToken } = useAuth();
+
+  const applyAnalysisState = (state: AnalysisState) => {
+    if (state.activeJob) {
+      setResultData(null);
+      setJobId(state.activeJob.jobId);
+      setPageState("loading");
+      setSearchParams({ jobId: state.activeJob.jobId }, { replace: true });
+      return;
+    }
+
+    setJobId(null);
+    setSearchParams({}, { replace: true });
+    if (state.analysis) {
+      setResultData(state.analysis);
+      setPageState("result");
+    } else {
+      setResultData(null);
+      setPageState("idle");
+    }
+  };
+
+  const restoreAnalysisState = async () => {
+    setPageState("restoring");
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Not authenticated.");
+      const res = await getAnalysisState(token);
+      applyAnalysisState(res.data);
+    } catch (e) {
+      console.error(e);
+      setPageState("loadError");
+    }
+  };
 
   const triggerAnalysis = async () => {
     setPageState("loading");
@@ -1764,45 +1805,29 @@ export function KnowledgeGraphPage() {
       if (!token) throw new Error("Not authenticated.");
       const { jobId } = await startAnalysis(token);
       setJobId(jobId);
+      setSearchParams({ jobId }, { replace: true });
     } catch (e) {
       console.error(e);
       message.error("Failed to start analysis. Check if you uploaded a CV.");
-      setPageState("idle");
+      await restoreAnalysisState();
     }
   };
 
   useEffect(() => {
-    // Post-onboarding handoff: ResumeService.ConfirmUploadAsync already
-    // queued (or reused) an analysis1 job for the confirmed resume, and
-    // OnboardingModal passes that job's id along here. Just watch it —
-    // do NOT call startAnalysis()/POST /api/analysis1/start, which would
-    // queue a second, redundant analysis1 job for the same resume and can
-    // race with the one onboarding already started (see CONTRACTS.md §8).
-    const paramJobId = searchParams.get("jobId");
-    if (paramJobId) {
-      setResultData(null);
-      setJobId(paramJobId);
-      setPageState("loading");
-      setSearchParams({}, { replace: true });
-      return;
-    }
-
-    // Plain mount/refresh — restore the last completed analysis from the DB
-    // instead of creating a new job. Stays "idle" when there is none yet.
     let cancelled = false;
-    const loadLatest = async () => {
+    const loadState = async () => {
       try {
         const token = await getToken();
-        if (!token) return;
-        const res = await getLatestAnalysis(token);
-        if (cancelled || !res.data) return;
-        setResultData(res.data);
-        setPageState("result");
+        if (!token) throw new Error("Not authenticated.");
+        const res = await getAnalysisState(token);
+        if (cancelled) return;
+        applyAnalysisState(res.data);
       } catch (e) {
         console.error(e);
+        if (!cancelled) setPageState("loadError");
       }
     };
-    loadLatest();
+    loadState();
 
     return () => {
       cancelled = true;
@@ -1810,13 +1835,15 @@ export function KnowledgeGraphPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLoadingDone = (data: AnalysisResult) => {
+    setJobId(null);
+    setSearchParams({}, { replace: true });
     setResultData(data);
     setPageState("result");
   };
 
   const handleError = () => {
     message.error("Analysis failed.");
-    setPageState("idle");
+    void restoreAnalysisState();
   };
 
   return (
@@ -1926,6 +1953,53 @@ export function KnowledgeGraphPage() {
       </Flex>
 
       {/* ── States ────────────────────────────────────────────────────────── */}
+      {pageState === "restoring" && (
+        <Flex
+          vertical
+          align="center"
+          justify="center"
+          gap={16}
+          style={{ minHeight: 400 }}
+        >
+          <Spin size="large" />
+          <Text style={{ color: "var(--text-secondary)" }}>
+            Restoring your latest analysis...
+          </Text>
+        </Flex>
+      )}
+
+      {pageState === "loadError" && (
+        <Flex
+          vertical
+          align="center"
+          justify="center"
+          gap={16}
+          style={{ minHeight: 400, textAlign: "center" }}
+        >
+          <Title level={4} style={{ margin: 0, color: "var(--text-primary)" }}>
+            We couldn't load your analysis
+          </Title>
+          <Text style={{ color: "var(--text-secondary)" }}>
+            Your existing analysis is safe. Try loading it again.
+          </Text>
+          <button
+            onClick={() => void restoreAnalysisState()}
+            style={{
+              padding: "8px 18px",
+              borderRadius: 10,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              background: "rgba(139,92,246,0.16)",
+              border: "1px solid rgba(139,92,246,0.30)",
+              color: "#A78BFA",
+            }}
+          >
+            Retry loading
+          </button>
+        </Flex>
+      )}
+
       {pageState === "idle" && (
         <Flex
           vertical
