@@ -1,0 +1,15 @@
+# Staging override for docker-compose.yml.
+# Usage: docker compose -f docker-compose.yml -f deploy/staging/docker-compose.staging.yml up -d --build
+services:
+  be:
+    environment:
+      ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Production}"
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      Cors__AllowedOrigins: "${STAGING_CORS_ORIGINS:-https://workx-iti.com}"
+      OAuth__FrontendCallbackUrl: "${STAGING_FRONTEND_URL:-https://workx-iti.com}/oauth-return"
+      OAuth__GitHub__RedirectUri: "${STAGING_API_URL:-https://api.workx-iti.com}/oauth/github/callback"
+
+  fe:
+    environment:
+      VITE_API_URL: "${STAGING_FE_API_URL:-https://api.workx-iti.com}"
+      VITE_CLERK_PUBLISHABLE_KEY: "${VITE_CLERK_PUBLISHABLE_KEY:-}"

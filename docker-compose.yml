@@ -22,6 +22,11 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   redis:
     image: redis:7-alpine
@@ -35,6 +40,11 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   minio:
     image: minio/minio:latest
@@ -59,6 +69,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   be:
     build:
@@ -111,6 +126,11 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   minio-init:
     image: minio/mc:latest
@@ -125,6 +145,11 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c " /usr/bin/mc alias set myminio http://minio:9000 \$MINIO_ROOT_USER \$MINIO_ROOT_PASSWORD; /usr/bin/mc mb myminio/\$S3_BUCKET_NAME --ignore-existing; printf '{\"CORSRules\":[{\"AllowedOrigins\":[\"*\"],\"AllowedMethods\":[\"GET\",\"PUT\",\"DELETE\",\"HEAD\"],\"AllowedHeaders\":[\"*\"],\"ExposeHeaders\":[\"ETag\",\"x-amz-request-id\"],\"MaxAgeSeconds\":3600}]}' > /tmp/cors.json; /usr/bin/mc cors set myminio/\$S3_BUCKET_NAME /tmp/cors.json; /usr/bin/mc anonymous set download myminio/\$S3_BUCKET_NAME; echo 'Bucket created and CORS configured.'; exit 0; "
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   fe:
     build:
@@ -148,6 +173,11 @@ services:
       - "${FE_PORT:-4200}:80"
     depends_on:
       - be
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   worker:
       extra_hosts:
@@ -179,6 +209,11 @@ services:
         timeout: 10s
         retries: 3
         start_period: 15s
+      logging:
+        driver: json-file
+        options:
+          max-size: "50m"
+          max-file: "3"
 
 volumes:
   workx-db-data:
