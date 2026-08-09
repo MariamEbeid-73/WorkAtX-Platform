@@ -28,6 +28,17 @@ const POLL_INTERVAL_MS = 1500;
 // scrape (real scrapes routinely run 1-4 minutes).
 const POLL_TIMEOUT_MS = 370_000;
 
+function toJobStatusUpdate(status: JobStatusDto): JobStatusUpdate {
+  return {
+    jobId: status.jobId,
+    status: status.status,
+    stage: status.stage,
+    progress: status.progress,
+    error: status.error,
+    timestamp: status.updatedAt,
+  };
+}
+
 /**
  * Polls a job until it completes or fails, then resolves with its final
  * status. Callers re-fetch authoritative data afterward rather than trusting
@@ -37,7 +48,10 @@ const POLL_TIMEOUT_MS = 370_000;
 export async function pollJobUntilDone(
   token: string,
   jobId: string,
-  opts?: { signal?: AbortSignal },
+  opts?: {
+    signal?: AbortSignal;
+    onProgress?: (u: JobStatusUpdate) => void;
+  },
 ): Promise<JobStatusDto> {
   const start = Date.now();
 
@@ -46,6 +60,7 @@ export async function pollJobUntilDone(
       throw new DOMException("Polling aborted", "AbortError");
     }
     const status = await getJobStatus(token, jobId);
+    opts?.onProgress?.(toJobStatusUpdate(status));
     if (status.status === "completed" || status.status === "failed") {
       return status;
     }
@@ -89,6 +104,22 @@ export async function waitForJobCompletion(
       fn();
     };
 
+    const reconcileStatus = (status: JobStatusDto) => {
+      opts.onProgress?.(toJobStatusUpdate(status));
+      if (status.status === "completed" || status.status === "failed") {
+        finish(() => resolve(status));
+      }
+    };
+
+    // Paint the authoritative persisted stage immediately. SignalR only
+    // delivers events emitted after subscription, so without this request a
+    // page opened mid-job can remain at 0% until the next progress event.
+    getJobStatus(token, jobId)
+      .then(reconcileStatus)
+      .catch(() => {
+        // The socket and polling fallback below still get a chance to recover.
+      });
+
     subscribeToJob(getToken, jobId, (update) => {
       opts.onProgress?.(update);
       if (update.status === "completed" || update.status === "failed") {
@@ -115,9 +146,7 @@ export async function waitForJobCompletion(
         // group. Reconcile once over HTTP so a missed terminal event renders
         // immediately instead of waiting for the polling fallback.
         const status = await getJobStatus(token, jobId);
-        if (status.status === "completed" || status.status === "failed") {
-          finish(() => resolve(status));
-        }
+        reconcileStatus(status);
       })
       .catch(() => {
         /* socket failed to connect — fall back to polling below */
@@ -125,7 +154,10 @@ export async function waitForJobCompletion(
 
     fallbackTimer = setTimeout(() => {
       finish(() => {
-        pollJobUntilDone(token, jobId, { signal: opts.signal }).then(
+        pollJobUntilDone(token, jobId, {
+          signal: opts.signal,
+          onProgress: opts.onProgress,
+        }).then(
           resolve,
           reject,
         );
