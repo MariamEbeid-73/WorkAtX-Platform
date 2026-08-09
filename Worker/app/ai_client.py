@@ -109,8 +109,77 @@ def call_process_api(
         if "plan" in msg_lower:
             return {
                 "responseType": "study_plan",
-                "summary": "Mock 30-day study plan ready",
-                "weeks": [{"week": 1, "focus": "Fundamentals"}]
+                "response": {
+                    "title": "Backend Engineering Growth Plan",
+                    "summary": "A focused 30-day plan based on your selected technologies.",
+                    "total_weeks": 4,
+                    "weeks": [
+                        {
+                            "week": 1,
+                            "focus_skills": ["Docker", "Container fundamentals"],
+                            "goals": "Package an ASP.NET Core service into a reproducible container.",
+                            "tasks": [
+                                "Write a multi-stage Dockerfile",
+                                "Add container health checks",
+                                "Run the API and PostgreSQL with Docker Compose",
+                            ],
+                            "project": None,
+                            "resources": [
+                                {
+                                    "title": "Docker Get Started",
+                                    "platform": "Docker Docs",
+                                    "type": "docs",
+                                    "cost": "free",
+                                    "reason": "Official practical introduction to images and containers.",
+                                    "url": "https://docs.docker.com/get-started/",
+                                    "verified": True,
+                                }
+                            ],
+                        },
+                        {
+                            "week": 2,
+                            "focus_skills": ["Clean Architecture", "Testing"],
+                            "goals": "Separate application concerns and protect behavior with tests.",
+                            "tasks": [
+                                "Split domain, application, and infrastructure concerns",
+                                "Add unit tests for one use case",
+                                "Add an integration test for one API endpoint",
+                            ],
+                            "project": {
+                                "title": "Refactor a service boundary",
+                                "description": "Move one vertical feature into clear domain, application, and infrastructure layers.",
+                            },
+                            "resources": [],
+                        },
+                        {
+                            "week": 3,
+                            "focus_skills": ["Messaging", "Reliable background jobs"],
+                            "goals": "Build resilient asynchronous processing with observable state.",
+                            "tasks": [
+                                "Publish work to a message queue",
+                                "Implement idempotent message handling",
+                                "Add retry and dead-letter behavior",
+                            ],
+                            "project": None,
+                            "resources": [],
+                        },
+                        {
+                            "week": 4,
+                            "focus_skills": ["Cloud deployment", "Observability"],
+                            "goals": "Deploy and monitor the completed service.",
+                            "tasks": [
+                                "Create a CI build pipeline",
+                                "Deploy the containerized service",
+                                "Add structured logs and a latency dashboard",
+                            ],
+                            "project": {
+                                "title": "Production-ready backend",
+                                "description": "Ship the service with automated delivery, health checks, logs, and a short architecture note.",
+                            },
+                            "resources": [],
+                        },
+                    ],
+                },
             }
 
         # Default Chat Response

@@ -182,6 +182,9 @@ All endpoints except `/api/internal/*` require a **Clerk JWT** (`Authorization: 
 | `/api/analysis1/state` | GET | Clerk | `ApiResponse<{ analysis, activeJob }>` — authoritative persisted result plus the newest queued/processing Analysis 1 job; never queues a job |
 | `/resumes/{id}/confirm` | POST | Clerk | `{ "resume": {...}, "analysisJobId": "<guid>|null" }` |
 | `/api/profile/scores` | GET | Clerk | score breakdown or `data: null` |
+| `/api/plans` | GET | Clerk | all persisted study plans for the current user, newest first |
+| `/api/plans/{id}` | GET | Clerk + ownership | one persisted study plan and its progress |
+| `/api/plans/{id}/progress` | PUT | Clerk + ownership | validates and replaces task/week completion state |
 | `/api/internal/ai/context/{userId}` | GET | `X-Service-Token` | AI context (below) |
 | `/api/internal/ai/jobs/{jobId}` | GET | `X-Service-Token` | full job + decoded payload |
 | `/api/internal/ai/resume/{resumeFileId}/download-url` | GET | `X-Service-Token` | `{ "url", "expiresAt" }` |
@@ -282,6 +285,28 @@ Step 2 of the CV upload flow. Marks the resume confirmed **and automatically cre
 ### `GET /api/profile/scores`
 
 Returns the score breakdown for the current user. `data` is `null` until the AI worker writes the score row — render fallbacks, do not error.
+
+### Study plan endpoints
+
+Completed AI responses with `responseType: "study_plan"` are stored in
+`UserStudyPlans`. `GET /api/plans` exposes those records to the owning user;
+the raw generated payload is returned as `plan`, alongside the database `id`,
+originating `jobId`/`sessionId`, timestamps, and a separate `progress` object.
+
+`PUT /api/plans/{id}/progress` accepts:
+
+```json
+{
+  "completedWeekIndexes": [0],
+  "completedTaskIndexes": { "0": [0, 1, 2] }
+}
+```
+
+Indexes are zero-based and validated against the immutable AI payload. A week
+cannot be completed until every task in that week is completed. Plan payloads
+must use the AI envelope `{ "responseType": "study_plan", "response": {
+"title": "...", "summary": "...", "weeks": [...] } }`; the worker rejects an
+empty/malformed `response.weeks` result instead of persisting an unusable plan.
 
 ### `GET /api/internal/ai/context/{userId}` (service-to-service)
 

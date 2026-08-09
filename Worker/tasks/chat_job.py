@@ -37,6 +37,13 @@ def handle_chat(task, job_id: str, job_data: dict):
     if not isinstance(response, dict) or "responseType" not in response:
         raise MalformedAIResponseError(f"Process response missing responseType: {response!r}")
 
+    if response.get("responseType") == "study_plan":
+        plan = response.get("response")
+        if not isinstance(plan, dict) or not isinstance(plan.get("weeks"), list) or not plan["weeks"]:
+            raise MalformedAIResponseError(
+                f"Study-plan response requires a non-empty response.weeks array: {response!r}"
+            )
+
     publish_progress(job_id=job_id, stage="Formatting response", percent=95)
 
     result_json = json.dumps(response)

@@ -136,6 +136,7 @@ public class AppDbContext : DbContext
             entity.HasOne(p => p.Session).WithMany()
                 .HasForeignKey(p => p.SessionId).OnDelete(DeleteBehavior.Cascade);
             entity.Property(p => p.ResultJson).HasColumnType("jsonb");
+            entity.Property(p => p.ProgressJson).HasColumnType("jsonb").HasDefaultValue("{}");
             entity.Property(p => p.CreatedAt).HasDefaultValueSql("NOW()");
             entity.Property(p => p.UpdatedAt).HasDefaultValueSql("NOW()");
         });

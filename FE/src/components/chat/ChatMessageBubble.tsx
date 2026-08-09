@@ -116,7 +116,9 @@ export function ChatMessageBubble({
                                 type="primary"
                                 icon={<LinkOutlined />}
                                 size="small"
-                                onClick={() => navigate('/plans')}
+                                onClick={() => navigate(message.jobId
+                                    ? `/plans?jobId=${encodeURIComponent(message.jobId)}`
+                                    : '/plans')}
                                 style={{
                                     background: 'linear-gradient(135deg, #7C3AED 0%, #0891B2 100%)',
                                     border: 'none',

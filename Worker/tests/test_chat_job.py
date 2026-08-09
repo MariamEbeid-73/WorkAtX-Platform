@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from app import ai_client
+from app.exceptions import MalformedAIResponseError
 from tasks.chat_job import handle_chat
 
 
@@ -42,3 +43,26 @@ def test_missing_message_fails_before_http_request(monkeypatch):
             ai_client.call_process_api(user_id="user-1", job_id="job-1", message=None)
 
     post_request.assert_not_called()
+
+
+def test_malformed_study_plan_is_not_submitted():
+    job_payload = {
+        "payload": {
+            "userId": "user-1",
+            "sessionId": "session-1",
+            "message": "Build my study plan",
+        }
+    }
+
+    with (
+        patch(
+            "tasks.chat_job.ai_client.call_process_api",
+            return_value={"responseType": "study_plan", "response": {"weeks": []}},
+        ),
+        patch("tasks.chat_job.backend_client.submit_job_result") as submit_result,
+        patch("tasks.chat_job.publish_progress"),
+    ):
+        with pytest.raises(MalformedAIResponseError, match="non-empty response.weeks"):
+            handle_chat(MagicMock(), "job-1", job_payload)
+
+    submit_result.assert_not_called()
