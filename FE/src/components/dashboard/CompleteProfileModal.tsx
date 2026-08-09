@@ -10,7 +10,7 @@ import {
 } from '@ant-design/icons';
 import { initiateOAuth, getConnections } from '../../services/oauthService';
 import { getProfile, updateProfile } from '../../services/profileService';
-import { createUploadIntent, uploadToMinIO, confirmUpload, listResumes } from '../../services/resumeService';
+import { createUploadIntent, uploadToStorage, confirmUpload, listResumes } from '../../services/resumeService';
 import { useAuth } from '@clerk/react';
 import type { ConnectedProvider } from '../../types/oauth';
 import { LinkedInUrlField } from '../LinkedInUrlField';
@@ -137,7 +137,7 @@ export function CompleteProfileModal({ open, onClose }: CompleteProfileModalProp
         setUploading(true);
         const file = resumeFile as unknown as File;
         const { resumeId, uploadUrl } = await createUploadIntent(token, file);
-        await uploadToMinIO(uploadUrl, file, () => {});
+        await uploadToStorage(uploadUrl, file, () => {});
         await confirmUpload(token, resumeId);
         setUploading(false);
       }

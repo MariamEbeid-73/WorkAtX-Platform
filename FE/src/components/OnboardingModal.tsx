@@ -9,7 +9,7 @@ import {
   UploadOutlined, GithubOutlined, LinkedinOutlined, RocketOutlined,
   FileTextOutlined, CheckCircleFilled, LoadingOutlined,
 } from '@ant-design/icons';
-import { createUploadIntent, uploadToMinIO, confirmUpload, listResumes } from '../services/resumeService';
+import { createUploadIntent, uploadToStorage, confirmUpload, listResumes } from '../services/resumeService';
 import { initiateOAuth, getConnections } from '../services/oauthService';
 import { getProfile } from '../services/profileService';
 import { LinkedInUrlField } from './LinkedInUrlField';
@@ -188,7 +188,7 @@ export function OnboardingModal({ open, onComplete, onClose, closable = false }:
         const token = await getToken();
         if (!token) throw new Error('Not authenticated');
         const { resumeId, uploadUrl } = await createUploadIntent(token, file);
-        await uploadToMinIO(uploadUrl, file, () => {});
+        await uploadToStorage(uploadUrl, file, () => {});
         const confirmResult = await confirmUpload(token, resumeId);
         // Null when this exact resume was already parsed and isn't stale
         // (idempotent re-confirm) — nothing new to watch in that case.

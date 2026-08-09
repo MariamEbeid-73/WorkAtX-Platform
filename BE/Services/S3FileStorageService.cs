@@ -16,6 +16,7 @@ public class S3FileStorageService : IFileStorageService, IDisposable
     public S3FileStorageService(IConfiguration configuration)
     {
         var endpoint  = configuration["S3:Endpoint"];   // null for real AWS, set for MinIO
+        var publicEndpoint = configuration["S3:PublicEndpoint"];
         var accessKey = configuration["S3:AccessKey"] ?? throw new InvalidOperationException("S3:AccessKey missing");
         var secretKey = configuration["S3:SecretKey"] ?? throw new InvalidOperationException("S3:SecretKey missing");
         var region    = configuration["S3:Region"]    ?? "us-east-1";
@@ -41,8 +42,11 @@ public class S3FileStorageService : IFileStorageService, IDisposable
             config.ForcePathStyle = true;
             config.HttpClientFactory = new TrustAllHttpClientFactory();
 
-            // For local dev, presigned URLs must be signed for localhost so the browser's Host header matches.
-            presignedConfig.ServiceURL = endpoint.Replace("minio", "localhost");
+            // The signed host must be the exact host used by the browser. Staging
+            // supplies its HTTPS API origin; local Compose falls back to localhost.
+            presignedConfig.ServiceURL = string.IsNullOrWhiteSpace(publicEndpoint)
+                ? endpoint.Replace("minio", "localhost")
+                : publicEndpoint;
             presignedConfig.ForcePathStyle = true;
             presignedConfig.HttpClientFactory = new TrustAllHttpClientFactory();
         }

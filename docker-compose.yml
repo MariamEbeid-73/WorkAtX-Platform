@@ -54,7 +54,7 @@ services:
     environment:
       MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
-      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+      MINIO_API_CORS_ALLOW_ORIGIN: "${S3_CORS_ALLOWED_ORIGIN:-http://localhost:4200}"
     # MINIO_API_PORT / MINIO_CONSOLE_PORT — same DB_PORT story above. Console
     # (9001) has no host_ip prefix even on staging — pre-existing, publicly
     # reachable by their own choice; left as-is rather than guessed at.
@@ -143,8 +143,15 @@ services:
     depends_on:
       minio:
         condition: service_healthy
-    entrypoint: >
-      /bin/sh -c " /usr/bin/mc alias set myminio http://minio:9000 \$MINIO_ROOT_USER \$MINIO_ROOT_PASSWORD; /usr/bin/mc mb myminio/\$S3_BUCKET_NAME --ignore-existing; printf '{\"CORSRules\":[{\"AllowedOrigins\":[\"*\"],\"AllowedMethods\":[\"GET\",\"PUT\",\"DELETE\",\"HEAD\"],\"AllowedHeaders\":[\"*\"],\"ExposeHeaders\":[\"ETag\",\"x-amz-request-id\"],\"MaxAgeSeconds\":3600}]}' > /tmp/cors.json; /usr/bin/mc cors set myminio/\$S3_BUCKET_NAME /tmp/cors.json; /usr/bin/mc anonymous set download myminio/\$S3_BUCKET_NAME; echo 'Bucket created and CORS configured.'; exit 0; "
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        /usr/bin/mc alias set myminio http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        /usr/bin/mc mb "myminio/$$S3_BUCKET_NAME" --ignore-existing
+        /usr/bin/mc anonymous set private "myminio/$$S3_BUCKET_NAME"
+        echo 'Private bucket is ready.'
     logging:
       driver: json-file
       options:
