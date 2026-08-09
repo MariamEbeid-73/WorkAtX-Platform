@@ -43,7 +43,7 @@ class FakeTask:
 @pytest.fixture(autouse=True)
 def no_real_io(monkeypatch):
     monkeypatch.setenv("MOCK_AI", "false")
-    with patch("tasks.process_job.publish_progress"):
+    with patch("tasks.chat_job.publish_progress"), patch("tasks.analysis1_job.publish_progress"):
         yield
 
 

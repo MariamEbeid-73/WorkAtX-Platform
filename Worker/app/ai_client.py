@@ -27,6 +27,9 @@ def call_process_api(
     context_summary: str = None,
     timeout: int = 300,
 ) -> dict:
+    if not isinstance(message, str) or not message.strip():
+        raise ValueError(f"call_process_api requires 'message' (job_id={job_id})")
+
     if _mock_ai_enabled():
         logger.info(f"[AI Client - MOCK] Simulating process API response for user={user_id}, job={job_id}, session={session_id}")
 
@@ -36,11 +39,6 @@ def call_process_api(
         # created) — always has a `message`. There's a single code path
         # here; the AI is one-shot per job and has no notion of "resuming"
         # a prior job.
-        if message is None:
-            raise ValueError(
-                f"call_process_api requires 'message' (job_id={job_id})"
-            )
-
         msg_lower = message.lower()
 
         # Trigger 1: Gap Analysis with Radio Buttons (tech_choices)
@@ -131,8 +129,19 @@ def call_process_api(
     }
 
     logger.info(f"[AI Client] Calling Unified Process API at {url} for job_id={job_id}, session_id={session_id}")
+    start = time.perf_counter()
     response = requests.post(url, json=payload, headers=AI_SERVICE_HEADERS, timeout=timeout)
-    response.raise_for_status()
+    duration_s = time.perf_counter() - start
+    if not response.ok:
+        logger.error(
+            f"[AI Client] Process API for job_id={job_id} returned {response.status_code} "
+            f"in {duration_s:.2f}s, body={response.text[:500]!r}"
+        )
+        response.raise_for_status()
+    logger.info(
+        f"[AI Client] Process API for job_id={job_id} -> {response.status_code} "
+        f"({len(response.content)} bytes) in {duration_s:.2f}s"
+    )
     return response.json()
 
 
@@ -214,8 +223,19 @@ def call_analysis_1_api(cv_bytes: bytes, github_url: str = None, linkedin_url: s
         data["linkedin_url"] = valid_linkedin
 
     logger.info(f"[AI Client] Calling Parse CV API at {url}")
+    start = time.perf_counter()
     response = requests.post(url, files=files, data=data, headers=AI_SERVICE_HEADERS, timeout=timeout)
-    response.raise_for_status()
+    duration_s = time.perf_counter() - start
+    if not response.ok:
+        logger.error(
+            f"[AI Client] Parse CV API returned {response.status_code} "
+            f"in {duration_s:.2f}s, body={response.text[:500]!r}"
+        )
+        response.raise_for_status()
+    logger.info(
+        f"[AI Client] Parse CV API -> {response.status_code} "
+        f"({len(response.content)} bytes) in {duration_s:.2f}s"
+    )
     return response.json()
 
 

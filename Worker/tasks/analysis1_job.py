@@ -57,6 +57,5 @@ def handle_analysis_1(task, job_id: str, job_data: dict):
     result_json = json.dumps(result_payload)
     backend_client.submit_job_result(job_id=job_id, status="completed", result_json=result_json)
 
-    publish_progress(job_id=job_id, stage="completed", percent=100)
     logger.info(f"[Analysis 1 Handler] [JobId={job_id}] Successfully completed and persisted result")
     return {"jobId": job_id, "status": "completed"}

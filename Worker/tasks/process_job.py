@@ -4,7 +4,6 @@ from celery_app import app
 from app import backend_client
 from tasks.chat_job import handle_chat
 from tasks.analysis1_job import handle_analysis_1
-from progress_publisher import publish_progress
 
 logger = logging.getLogger(__name__)
 
@@ -83,11 +82,6 @@ def _handle_retry(task_obj, exc, job_id: str):
 
 
 def _safe_submit_failed_status(job_id: str, error_msg: str):
-    try:
-        publish_progress(job_id=job_id, stage="failed", percent=100)
-    except Exception as e:
-        logger.warning(f"[Process Job] Failed to publish stream failure event for {job_id}: {e}")
-
     try:
         backend_client.submit_job_result(job_id=job_id, status=STATUS_FAILED, error=error_msg)
     except Exception as e:
