@@ -94,6 +94,8 @@ export interface JobResultDto {
 export interface UiChatMessage extends Omit<ChatMessageDto, "id"> {
     id: string;
     pending?: boolean;
+    pendingStage?: string | null;
+    pendingProgress?: number | null;
     failed?: boolean;
     resultStatus?: "ok" | "unavailable" | "error";
 }
