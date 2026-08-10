@@ -42,9 +42,6 @@ ScaffoldingReadMe.txt
 # dotenv environment variables file
 .env
 
-# Local deployment credentials
-secrets/
-
 # Others
 node_modules/
 dist/
