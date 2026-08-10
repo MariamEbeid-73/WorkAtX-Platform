@@ -46,6 +46,12 @@ ScaffoldingReadMe.txt
 secrets/
 
 # Others
+node_modules/
+dist/
+.vite/
+.pytest_cache/
+__pycache__/
+*.py[cod]
 ~$*
 *~
 CodeCoverage/
