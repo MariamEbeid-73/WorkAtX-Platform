@@ -48,10 +48,28 @@ The ignored default credential path is `secrets/gcp-deployer.json`.
 make build BRANCH=last-touch
 make deploy-status
 make rollback SHA=<full-40-char-sha>
-make logs
+make logs                          # all Docker-retained platform logs
+make logs SERVICE=worker TAIL=200  # intentionally request a short tail
+make logs-follow SERVICE=worker    # retained logs, then live output
+make logs-services                 # discover all valid services
+make logs-failures                 # saved failed-deployment build IDs
+make logs-failure BUILD_ID=<id>    # diagnostics captured before rollback
+make logs-bundle                   # bounded incident export
 make vm-ssh
 make down
 ```
+
+`make logs` now displays the deployed runtime instead of creating an export
+file. The previous export behavior is `make logs-bundle`. Without `TAIL`, the
+helper shows every line Docker currently retains. Docker still protects the VM
+disk by rotating each service at 50 MB across 3 files. `TAIL=0` with
+`make logs-follow` streams only new lines. The valid services are read from the
+deployed Compose file, including the one-shot `minio-init` service.
+
+These commands use the isolated team deployment identity. They do not require
+personal project access or change the developer's normal gcloud account.
+Runtime and failure logs may contain private operational data and should remain
+inside the engineering team.
 
 The deployment scripts derive paths from this repository and use a temporary
 gcloud configuration. They do not depend on a personal username, clone path,

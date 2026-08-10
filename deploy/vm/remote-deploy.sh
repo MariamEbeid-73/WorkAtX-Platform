@@ -28,6 +28,8 @@ PREFIX=me-central1-docker.pkg.dev/work-at-x/workx-images
 DEPLOY_DIR=/srv/workx/deploy/platform
 CONFIG_DIR=/srv/workx/config/platform
 STATE_DIR=/srv/workx/state/platform
+FAILURE_DIR=/srv/workx/logs/deployments/platform
+FAILURE_FILE="${FAILURE_DIR}/${BUILD_ID}.failure.log"
 COMPOSE_FILE="${DEPLOY_DIR}/docker-compose.yml"
 CURRENT_STATE="${STATE_DIR}/current.env"
 PREVIOUS_STATE="${STATE_DIR}/previous.env"
@@ -42,6 +44,7 @@ test -f "${CONFIG_DIR}/.env" || { echo "Missing platform runtime .env." >&2; exi
 test -f "${CONFIG_DIR}/staging.env" || { echo "Missing platform staging.env." >&2; exit 4; }
 test -f "${DEPLOY_DIR}/nginx/workx.conf" || { echo "Missing nginx WorkX configuration." >&2; exit 4; }
 install -d -m 0755 "${STATE_DIR}"
+install -d -m 0700 "${FAILURE_DIR}"
 
 for var in FE_PORT BE_PORT DB_PORT REDIS_PORT MINIO_API_PORT; do
   value="$(sed -n "s/^${var}=//p" "${CONFIG_DIR}/.env" | tail -1)"
@@ -75,19 +78,102 @@ docker tag "${WORKER_IMAGE}" workx-worker:latest
 export WORKX_BE_IMAGE=workx-be:latest WORKX_FE_IMAGE=workx-fe:latest WORKX_WORKER_IMAGE=workx-worker:latest
 compose=(docker compose --env-file "${CONFIG_DIR}/.env" --env-file "${CONFIG_DIR}/staging.env" -f "${COMPOSE_FILE}")
 
+container_state() {
+  local name="$1"
+  if ! docker inspect "${name}" >/dev/null 2>&1; then
+    echo "container=${name} state=missing"
+    return 0
+  fi
+  docker inspect --format \
+    'container={{.Name}} status={{.State.Status}} exit_code={{.State.ExitCode}} oom_killed={{.State.OOMKilled}} restart_count={{.RestartCount}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} error={{json .State.Error}}' \
+    "${name}" || true
+  docker inspect --format \
+    '{{if .State.Health}}{{range .State.Health.Log}}health_check start={{.Start}} exit={{.ExitCode}} output={{json .Output}}{{println}}{{end}}{{end}}' \
+    "${name}" || true
+}
+
+bounded_container_logs() {
+  local name="$1" lines="$2"
+  echo "--- ${name}: latest ${lines} complete lines ---"
+  if docker inspect "${name}" >/dev/null 2>&1; then
+    docker logs --timestamps --tail="${lines}" "${name}" 2>&1 || true
+  else
+    echo "Container ${name} does not exist."
+  fi
+}
+
+prune_failure_snapshots() {
+  find "${FAILURE_DIR}" -maxdepth 1 -type f -name '*.failure.log' -mtime +14 -delete
+  find "${FAILURE_DIR}" -maxdepth 1 -type f -name '*.failure.log' \
+    -printf '%T@ %p\n' | sort -nr | tail -n +21 | cut -d' ' -f2- | \
+    while IFS= read -r stale; do [[ -z "${stale}" ]] || rm -f -- "${stale}"; done
+}
+
+capture_failure_diagnostics() {
+  local reason="$1"
+  local append=0
+  [[ -f "${FAILURE_FILE}" ]] && append=1
+  umask 077
+  {
+    if [[ "${append}" -eq 1 ]]; then
+      echo
+      echo "===== ADDITIONAL FAILURE DIAGNOSTICS ====="
+    else
+      echo "===== PLATFORM DEPLOYMENT FAILURE ====="
+      echo "build_id=${BUILD_ID}"
+      echo "branch=${BRANCH}"
+      echo "commit_sha=${SHA}"
+    fi
+    echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "reason=${reason}"
+    echo
+    echo "--- Compose state ---"
+    "${compose[@]}" ps -a || true
+    echo
+    echo "--- Container state and health checks ---"
+    for name in workx-be workx-fe workx-worker workx-db workx-redis workx-minio workx-minio-init; do
+      container_state "${name}"
+    done
+    echo
+    bounded_container_logs workx-be 100
+    bounded_container_logs workx-fe 100
+    bounded_container_logs workx-worker 100
+    bounded_container_logs workx-db 50
+    bounded_container_logs workx-redis 50
+    bounded_container_logs workx-minio 50
+    bounded_container_logs workx-minio-init 50
+    if [[ "${reason}" == *nginx* || "${reason}" == *Nginx* ]]; then
+      echo "--- Host nginx configuration ---"
+      nginx -t || true
+      echo "--- Host nginx journal ---"
+      journalctl -u nginx -n 50 --no-pager || true
+      echo "--- Host nginx error log ---"
+      tail -n 100 /var/log/nginx/error.log || true
+    fi
+  } 2>&1 | if [[ "${append}" -eq 1 ]]; then tee -a "${FAILURE_FILE}" >&2; else tee "${FAILURE_FILE}" >&2; fi || true
+  chmod 0600 "${FAILURE_FILE}" 2>/dev/null || true
+  prune_failure_snapshots || true
+}
+
+HEALTH_FAILURE_REASON=""
+
 health_check() {
+  HEALTH_FAILURE_REASON=""
   local healthy=0
   for _ in $(seq 1 45); do
     if [[ "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:5000/health || true)" == 200 ]]; then healthy=1; break; fi
     sleep 2
   done
-  [[ "${healthy}" -eq 1 ]] || return 1
-  docker exec workx-redis redis-cli ping | grep -qx PONG || return 1
-  curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null || return 1
-  curl -fsS http://127.0.0.1:8080/ >/dev/null || return 1
-  docker inspect -f '{{.State.Running}}' workx-worker | grep -qx true || return 1
+  if [[ "${healthy}" -ne 1 ]]; then HEALTH_FAILURE_REASON="Backend HTTP health check timed out"; return 1; fi
+  if ! docker exec workx-redis redis-cli ping | grep -qx PONG; then HEALTH_FAILURE_REASON="Redis ping failed"; return 1; fi
+  if ! curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null; then HEALTH_FAILURE_REASON="MinIO health check failed"; return 1; fi
+  if ! curl -fsS http://127.0.0.1:8080/ >/dev/null; then HEALTH_FAILURE_REASON="Frontend HTTP health check failed"; return 1; fi
+  if ! docker inspect -f '{{.State.Running}}' workx-worker | grep -qx true; then HEALTH_FAILURE_REASON="Worker container is not running"; return 1; fi
   if docker inspect workx-ai-app >/dev/null 2>&1; then
-    docker exec workx-worker python3 -c "import urllib.request; assert urllib.request.urlopen('http://workx-ai-app:8000/health', timeout=5).status == 200" || return 1
+    if ! docker exec workx-worker python3 -c "import urllib.request; assert urllib.request.urlopen('http://workx-ai-app:8000/health', timeout=5).status == 200"; then
+      HEALTH_FAILURE_REASON="Worker cannot reach the AI service"
+      return 1
+    fi
   fi
 }
 
@@ -97,16 +183,44 @@ rollback() {
   docker tag workx-be:rollback workx-be:latest
   docker tag workx-fe:rollback workx-fe:latest
   docker tag workx-worker:rollback workx-worker:latest
-  "${compose[@]}" up -d --no-build
-  health_check
+  if ! "${compose[@]}" up -d --no-build; then
+    echo "Could not recreate the previous platform containers." >&2
+    return 1
+  fi
+  if ! health_check; then
+    echo "Rollback health check failed: ${HEALTH_FAILURE_REASON}" >&2
+    return 1
+  fi
 }
 
-if ! "${compose[@]}" up -d --no-build; then rollback || true; exit 6; fi
-if ! health_check; then rollback; exit 7; fi
+fail_with_rollback() {
+  local exit_code="$1" reason="$2"
+  capture_failure_diagnostics "${reason}" || true
+  if ! rollback; then
+    capture_failure_diagnostics "Rollback failed after: ${reason}" || true
+    echo "Both the platform deployment and its automatic rollback failed." >&2
+  fi
+  echo >&2
+  echo "Complete current logs: make logs" >&2
+  echo "Follow worker logs:   make logs-follow SERVICE=worker TAIL=200" >&2
+  echo "Saved failure:        make logs-failure BUILD_ID=${BUILD_ID}" >&2
+  exit "${exit_code}"
+}
+
+if ! "${compose[@]}" up -d --no-build; then
+  fail_with_rollback 6 "Platform containers failed to start"
+fi
+if ! health_check; then
+  fail_with_rollback 7 "${HEALTH_FAILURE_REASON:-Platform health check failed}"
+fi
 
 install -m 0644 "${DEPLOY_DIR}/nginx/workx.conf" /etc/nginx/sites-available/workx
-if ! nginx -t; then rollback; exit 8; fi
-systemctl reload nginx
+if ! nginx -t; then
+  fail_with_rollback 8 "Nginx configuration validation failed"
+fi
+if ! systemctl reload nginx; then
+  fail_with_rollback 9 "Nginx reload failed"
+fi
 
 tmp_state="$(mktemp "${STATE_DIR}/current.XXXXXX")"
 {
@@ -119,4 +233,3 @@ mv -f "${tmp_state}" "${CURRENT_STATE}"
 printf '%s service=platform branch=%s sha=%s build=%s\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${BRANCH}" "${SHA}" "${BUILD_ID}" >> "${HISTORY_FILE}"
 echo "Platform deployment succeeded: ${SHA}"
-

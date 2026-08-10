@@ -88,16 +88,17 @@ steps:
         bundle_dir="$$(mktemp -d)"
         cp deploy/vm/docker-compose.yml "$${bundle_dir}/docker-compose.yml"
         cp deploy/vm/remote-deploy.sh "$${bundle_dir}/remote-deploy.sh"
+        cp deploy/vm/remote-logs.sh "$${bundle_dir}/remote-logs.sh"
         mkdir -p "$${bundle_dir}/nginx"
         cp deploy/staging/nginx/workx.conf "$${bundle_dir}/nginx/workx.conf"
-        chmod 0755 "$${bundle_dir}/remote-deploy.sh"
+        chmod 0755 "$${bundle_dir}/remote-deploy.sh" "$${bundle_dir}/remote-logs.sh"
         tar -czf /tmp/workx-platform-deploy.tgz -C "$${bundle_dir}" .
 
         target="${_REMOTE_USER}@${_VM_NAME}"
         gcloud compute scp /tmp/workx-platform-deploy.tgz "$${target}:/tmp/workx-platform-deploy-${BUILD_ID}.tgz" \
           --zone="${_VM_ZONE}" --project="${PROJECT_ID}" --quiet --ssh-key-expire-after=30m
         printf -v install_cmd \
-          'sudo install -d -m 0755 /srv/workx/deploy/platform && sudo tar -xzf %q -C /srv/workx/deploy/platform && sudo chmod 0755 /srv/workx/deploy/platform/remote-deploy.sh && rm -f %q' \
+          'sudo install -d -m 0755 /srv/workx/deploy/platform && sudo tar -xzf %q -C /srv/workx/deploy/platform && sudo chmod 0755 /srv/workx/deploy/platform/remote-deploy.sh /srv/workx/deploy/platform/remote-logs.sh && rm -f %q' \
           "/tmp/workx-platform-deploy-${BUILD_ID}.tgz" "/tmp/workx-platform-deploy-${BUILD_ID}.tgz"
         gcloud compute ssh "$${target}" --zone="${_VM_ZONE}" --project="${PROJECT_ID}" \
           --quiet --ssh-key-expire-after=30m --command="$${install_cmd}"
