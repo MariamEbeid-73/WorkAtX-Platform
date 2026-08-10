@@ -31,10 +31,11 @@ creates it from `.env.example` without overwriting an existing file.
 
 ## Staging deployment
 
-Cloud Build checks out the selected private GitHub branch, builds the backend,
-frontend, and worker images for `linux/amd64`, pushes them to Artifact
-Registry, and asks the VM to pull the exact commit images. The VM does not
-clone this repository and does not build images.
+The deployment script fetches the selected GitHub branch, exports only tracked
+files from that exact commit, and submits them to Cloud Build. Cloud Build
+builds the backend, frontend, and worker images for `linux/amd64`, pushes them
+to Artifact Registry, and asks the VM to pull the exact commit images. The VM
+does not clone this repository and does not build images.
 
 ```bash
 export WORKX_GCP_CREDENTIALS=/secure/path/gcp-deployer.json
