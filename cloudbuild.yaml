@@ -80,6 +80,8 @@ steps:
           echo "Build-only mode; the VM will not be changed."
           exit 0
         fi
+        apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends openssh-client >/dev/null
         [[ "${COMMIT_SHA}" =~ ^[0-9a-fA-F]{40}$ ]] || { echo "Cloud Build did not provide a full commit SHA." >&2; exit 2; }
         [[ "${BRANCH_NAME}" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "Unsupported branch name." >&2; exit 2; }
 
