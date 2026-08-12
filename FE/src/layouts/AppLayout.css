@@ -275,3 +275,143 @@
   border-color: rgba(139,92,246,0.4);
   color: var(--text-primary);
 }
+
+/* ── Mobile top bar (hidden on desktop) ─────────────────────────────────── */
+
+.mobile-topbar {
+  display: none;
+}
+
+/* ── Mobile drawer backdrop (hidden on desktop) ────────────────────────── */
+
+.mobile-backdrop {
+  display: none;
+}
+
+/* ── Responsive: ≤ 960px → sidebar becomes an off-canvas drawer ───────────
+   Desktop rendering above this breakpoint is unchanged. Below it the fixed
+   240px sidebar would otherwise eat half a phone screen, so we hide it
+   off-canvas and surface it via a hamburger in a slim top bar.          */
+
+@media (max-width: 960px) {
+  /* Sider becomes a slide-in drawer. Antd sets an inline width; we force
+     240px so the collapsed (72px) state never shows on mobile. */
+  .app-sider {
+    width: 240px !important;
+    transform: translateX(-100%);
+    will-change: transform;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+  }
+  .app-sider.app-sider--drawer-open {
+    transform: translateX(0);
+  }
+
+  /* The desktop collapse-pip is meaningless on mobile. */
+  .sider-collapse-btn {
+    display: none !important;
+  }
+
+  /* Content goes full-width; top padding clears the 56px mobile top bar. */
+  .app-content-area {
+    margin-left: 0 !important;
+  }
+
+  /* Slim fixed top bar with hamburger + logo + avatar. */
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    padding: 0 12px 0 8px;
+    z-index: 199;
+    background: rgba(8, 11, 20, 0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .mobile-topbar__left,
+  .mobile-topbar__right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .mobile-topbar__hamburger {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 20px;
+    transition: background 0.18s ease, color 0.18s ease;
+  }
+  .mobile-topbar__hamburger:hover {
+    background: rgba(139, 92, 246, 0.12);
+    color: var(--text-primary);
+  }
+
+  .mobile-topbar__logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .mobile-topbar__logo .sider-logo-icon {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+    border-radius: 8px;
+  }
+  .mobile-topbar__logo-text {
+    font-size: 16px;
+    font-weight: 800;
+    background: linear-gradient(90deg, #C4B5FD 0%, #67E8F9 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
+  }
+
+  .mobile-topbar__avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #7C3AED 0%, #0891B2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+
+  /* Backdrop sits under the drawer but above content. */
+  .mobile-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+    z-index: 198;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  .mobile-backdrop.mobile-backdrop--visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}

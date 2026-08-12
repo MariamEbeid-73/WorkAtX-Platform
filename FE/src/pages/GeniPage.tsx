@@ -108,6 +108,7 @@ export function GeniPage() {
 
   return (
     <div
+      className="geni-page-root"
       style={{
         animation: 'fadeIn 0.5s ease both',
         height: 'calc(100vh - 88px)',
@@ -116,17 +117,25 @@ export function GeniPage() {
       }}
     >
       {sidebarOpen && (
-        <ChatSidebar
-          sessions={sessions}
-          activeSessionId={activeSessionId}
-          isLoading={sessionsLoading}
-          error={sessionsError}
-          onSelect={selectSession}
-          onNewChat={startNewChat}
-          onRename={renameSession}
-          onArchive={archiveSession}
-          onCollapse={() => setSidebarOpen(false)}
-        />
+        <>
+          <div
+            className="geni-sidebar-backdrop"
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden
+          />
+          <ChatSidebar
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            isLoading={sessionsLoading}
+            error={sessionsError}
+            onSelect={selectSession}
+            onNewChat={startNewChat}
+            onRename={renameSession}
+            onArchive={archiveSession}
+            onCollapse={() => setSidebarOpen(false)}
+            className="chat-sidebar--drawer-open"
+          />
+        </>
       )}
 
       <div className="geni-chat-window">
