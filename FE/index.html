@@ -6,6 +6,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>WorkX</title>
     <script src="/env-config.js"></script>
+    <!-- Belt-and-suspenders cache control for older mobile WebViews / Android
+         browsers that don't strictly honor HTTP Cache-Control. The HTTP
+         response headers (set by workx.conf + the FE container's nginx.conf)
+         are the authoritative source; these meta tags only act as a hint. -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <!-- Bump WORKX_BUNDLE_VERSION on every deploy. The runtime guard in
+         main.tsx compares this to the value compiled into the bundle; if they
+         diverge (e.g. the browser served a stale cached index.html pointing
+         at an older bundle, or restored the page from bfcache), we force a
+         single reload to pick up the current bundle. -->
+    <meta name="workx-bundle-version" content="responsive-2026-08-12" />
     <style>
       /* Critical mobile shell CSS — inlined so the authenticated layout is
          mobile on first paint, before the JS bundle injects the full
