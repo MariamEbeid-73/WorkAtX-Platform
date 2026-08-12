@@ -4,7 +4,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=gcloud-session.sh
 source "${SCRIPT_DIR}/gcloud-session.sh"
 
-BRANCH="${BRANCH:-}"
+BRANCH="${BRANCH:-main}"
 DEPLOY=true
 for arg in "$@"; do
   case "${arg}" in
@@ -13,10 +13,6 @@ for arg in "$@"; do
     *) workx_fail "Unknown option: ${arg}" ;;
   esac
 done
-if [[ -z "${BRANCH}" ]]; then
-  printf 'BRANCH is required.\n\nExample:\nmake deploy BRANCH=last-touch\n' >&2
-  exit 1
-fi
 workx_validate_ref BRANCH "${BRANCH}"
 workx_gcloud_init
 SOURCE_DIR="$(mktemp -d -t workx-platform-source.XXXXXX)"
