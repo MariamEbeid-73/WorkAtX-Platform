@@ -3,9 +3,35 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>WorkX</title>
     <script src="/env-config.js"></script>
+    <style>
+      /* Critical mobile shell CSS — inlined so the authenticated layout is
+         mobile on first paint, before the JS bundle injects the full
+         stylesheet. Without this, phones briefly render the desktop shell
+         (240px fixed sidebar) until /assets/*.css loads, which on a cold
+         or cached load looks like "desktop layout until refresh".
+         Desktop is unaffected — everything is gated behind max-width:960px. */
+      html, body { margin: 0; padding: 0; }
+      #root { min-height: 100vh; }
+      @media (max-width: 960px) {
+        html, body { overflow-x: hidden; }
+        /* Hide the fixed desktop sidebar off-canvas immediately. The app
+           later adds a transform-based drawer toggle; this just makes sure
+           it never occupies 240px on a phone before JS/CSS loads. */
+        .app-sider {
+          position: fixed !important;
+          left: 0; top: 0; bottom: 0;
+          width: 240px !important;
+          transform: translateX(-100%);
+          transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+          z-index: 200;
+        }
+        .app-content-area { margin-left: 0 !important; }
+        .sider-collapse-btn { display: none !important; }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
