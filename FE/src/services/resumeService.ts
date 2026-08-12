@@ -19,7 +19,7 @@ export const createUploadIntent = (
  * Uses XMLHttpRequest so we get upload progress events.
  * fetch() does not support upload progress.
  */
-export function uploadToMinIO(
+export function uploadToStorage(
     uploadUrl: string,
     file: File,
     onProgress: (percent: number) => void,
@@ -40,12 +40,7 @@ export function uploadToMinIO(
 
         xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
 
-        let finalUrl = uploadUrl;
-        if (finalUrl.includes('//minio:9000')) {
-            finalUrl = finalUrl.replace('//minio:9000', '//localhost:9000');
-        }
-        finalUrl = finalUrl.replace('https://localhost:9000', 'http://localhost:9000');
-        xhr.open('PUT', finalUrl);
+        xhr.open('PUT', uploadUrl);
         xhr.setRequestHeader('Content-Type', file.type);
         xhr.send(file);
     });
@@ -60,14 +55,8 @@ export const listResumes = (token: string): Promise<ResumeFile[]> =>
     api<ResumeFile[]>('/resumes', token);
 
 /** Returns a short-lived download URL. */
-export const getDownloadUrl = async (token: string, resumeId: string): Promise<DownloadUrlResponse> => {
-    const res = await api<DownloadUrlResponse>(`/resumes/${resumeId}/download-url`, token);
-    if (res.downloadUrl.includes('//minio:9000')) {
-        res.downloadUrl = res.downloadUrl.replace('//minio:9000', '//localhost:9000');
-    }
-    res.downloadUrl = res.downloadUrl.replace('https://localhost:9000', 'http://localhost:9000');
-    return res;
-};
+export const getDownloadUrl = (token: string, resumeId: string): Promise<DownloadUrlResponse> =>
+    api<DownloadUrlResponse>(`/resumes/${resumeId}/download-url`, token);
 
 /** Permanently deletes a resume. */
 export const deleteResume = (token: string, resumeId: string): Promise<void> =>

@@ -16,10 +16,12 @@ public class JobService : IJobService
     };
 
     private readonly AppDbContext _db;
+    private readonly ILogger<JobService> _logger;
 
-    public JobService(AppDbContext db)
+    public JobService(AppDbContext db, ILogger<JobService> logger)
     {
         _db = db;
+        _logger = logger;
     }
 
     public async Task<Job> CreateAsync(Guid userId, string jobType, object? payload, Guid? sessionId = null)
@@ -37,6 +39,10 @@ public class JobService : IJobService
 
         _db.Jobs.Add(job);
         await _db.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Job {JobId} enqueued: type={JobType}, user={UserId}",
+            job.Id, jobType, userId);
 
         return job;
     }

@@ -161,6 +161,9 @@ public class JobProgressStreamConsumer : BackgroundService
             // WIDENED FILTER: Check if job exists and is currently processing (status-based, not type-based)
             if (job is null || job.Status != JobStatus.Processing)
             {
+                _logger.LogWarning(
+                    "Discarding progress event {Id} for job {JobId}: job is {JobStatus}, not Processing",
+                    entry.Id, jobId, job is null ? "missing" : job.Status.ToString());
                 await db.StreamAcknowledgeAsync(_streamName, _consumerGroup, entry.Id);
                 return;
             }
@@ -169,6 +172,10 @@ public class JobProgressStreamConsumer : BackgroundService
             job.Progress = progress;
             job.UpdatedAt = DateTimeOffset.UtcNow;
             await dbContext.SaveChangesAsync(stoppingToken);
+
+            _logger.LogDebug(
+                "Applied progress event {Id} for job {JobId}: stage={Stage}, progress={Progress}",
+                entry.Id, jobId, stage, progress);
 
             // Same event name + field set as InternalAiController.BroadcastJobUpdateAsync
             // (processing/completed/failed transitions) — the frontend has one handler

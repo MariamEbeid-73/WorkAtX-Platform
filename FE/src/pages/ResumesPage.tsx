@@ -4,7 +4,7 @@ import { Card, Button, Flex, Typography, Upload, Progress, message, Spin, Popcon
 import { UploadOutlined, DownloadOutlined, DeleteOutlined, FilePdfOutlined, FileTextOutlined } from '@ant-design/icons';
 import {
   createUploadIntent,
-  uploadToMinIO,
+  uploadToStorage,
   confirmUpload,
   listResumes,
   getDownloadUrl,
@@ -61,7 +61,7 @@ export function ResumesPage() {
       setParseProgress(0);
       const token = await getToken();
       const { resumeId, uploadUrl } = await createUploadIntent(token!, file);
-      await uploadToMinIO(uploadUrl, file, (pct) => setUploadProgress(pct));
+      await uploadToStorage(uploadUrl, file, (pct) => setUploadProgress(pct));
       const { analysisJobId } = await confirmUpload(token!, resumeId);
       setUploading(false);
       setUploadProgress(0);

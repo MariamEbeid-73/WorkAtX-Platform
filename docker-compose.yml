@@ -2,12 +2,18 @@ services:
   db:
     image: postgres:16-alpine
     container_name: workx-db
+    restart: unless-stopped
     environment:
       POSTGRES_USER: "${DB_USER:-postgres}"
       POSTGRES_PASSWORD: "${DB_PASSWORD:-WorkX@Password2026}"
       POSTGRES_DB: "${DB_NAME:-WorkXDb}"
+    # DB_PORT (host_ip:port, e.g. "127.0.0.1:5432" on staging/prod) — same
+    # story as FE_PORT below: staging-deployment-only (f2c77f4), never
+    # merged to main. Deploying main-derived code as a plain "5432:5432"
+    # publicly exposed Postgres on the VM's external IP until this was
+    # restored — confirmed via an external TCP probe against the live VM.
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - workx-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -16,29 +22,45 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   redis:
     image: redis:7-alpine
     container_name: workx-redis
+    restart: unless-stopped
+    # REDIS_PORT — same DB_PORT story above.
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
-      retries: 5 
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   minio:
     image: minio/minio:latest
     container_name: workx-minio
+    restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
-      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+      MINIO_API_CORS_ALLOW_ORIGIN: "${S3_CORS_ALLOWED_ORIGIN:-http://localhost:4200}"
+    # MINIO_API_PORT / MINIO_CONSOLE_PORT — same DB_PORT story above. Console
+    # (9001) has no host_ip prefix even on staging — pre-existing, publicly
+    # reachable by their own choice; left as-is rather than guessed at.
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - workx-minio-data:/data
     healthcheck:
@@ -47,6 +69,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   be:
     build:
@@ -56,6 +83,7 @@ services:
         - workx-be:latest
     image: workx-be:latest
     container_name: workx-be
+    restart: unless-stopped
     environment:
       ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Development}"
       Clerk__Authority: "${CLERK_AUTHORITY:-https://factual-reptile-75.clerk.accounts.dev}"
@@ -67,10 +95,17 @@ services:
       S3__SecretKey: "${AWS_SECRET_ACCESS_KEY:-minioadmin}"
       S3__Region: "${AWS_REGION:-us-east-1}"
       OAuth__GitHub__ClientId: "${GITHUB_CLIENT_ID:-Ov23liacWpZf9ZDCpiGt}"
-      OAuth__GitHub__ClientSecret: "${GITHUB_CLIENT_SECRET:-47aaaa6b4d8230ecd1d6f1306ce8b7730376386b}"
+      # No committed fallback for real secrets — a missing value must fail
+      # loud (docker compose's ${VAR:?msg} syntax), not silently fall back to
+      # a value that used to sit here in plaintext. See INTEGRATION-REPORT.md:
+      # this secret and Encryption__Key below were both committed in the
+      # clear on main (and a LinkedIn secret on staging-deployment) and
+      # should be treated as compromised — rotate them, this fix alone does
+      # not un-leak history that's already pushed.
+      OAuth__GitHub__ClientSecret: "${GITHUB_CLIENT_SECRET:?Set GITHUB_CLIENT_SECRET in .env — do not reuse the value formerly hardcoded here, rotate it}"
       OAuth__GitHub__RedirectUri: "http://localhost:5000/oauth/github/callback"
       OAuth__FrontendCallbackUrl: "${FRONTEND_URL:-http://localhost:4200}/oauth-return"
-      Encryption__Key: "${ENCRYPTION_KEY:-2JGGQQujI4auE8XfUHisIVNJ3AGayFN4ygljCRFmgms=}"
+      Encryption__Key: "${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in .env (openssl rand -base64 32) — do not reuse the value formerly hardcoded here, rotate it}"
       Redis__Configuration: "redis:6379,abortConnect=false"
       Redis__CeleryTask: "${CELERY_TASK:-worker.tasks.process_job}"
       Redis__CeleryQueue: "${CELERY_QUEUE:-celery}"
@@ -79,8 +114,9 @@ services:
       Summarization__ApiUrl: "${SUMMARIZATION_API_URL:-}"
       Summarization__ApiKey: "${SUMMARIZATION_API_KEY:-}"
       Summarization__Model: "${SUMMARIZATION_MODEL:-gpt-4o-mini}"
+    # BE_PORT — same DB_PORT story above.
     ports:
-      - "5000:5000"
+      - "${BE_PORT:-5000}:5000"
     depends_on:
       db:
         condition: service_healthy
@@ -90,10 +126,16 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   minio-init:
     image: minio/mc:latest
     container_name: workx-minio-init
+    restart: "no"
     environment:
       MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
@@ -101,8 +143,20 @@ services:
     depends_on:
       minio:
         condition: service_healthy
-    entrypoint: >
-      /bin/sh -c " /usr/bin/mc alias set myminio http://minio:9000 \$MINIO_ROOT_USER \$MINIO_ROOT_PASSWORD; /usr/bin/mc mb myminio/\$S3_BUCKET_NAME --ignore-existing; printf '{\"CORSRules\":[{\"AllowedOrigins\":[\"*\"],\"AllowedMethods\":[\"GET\",\"PUT\",\"DELETE\",\"HEAD\"],\"AllowedHeaders\":[\"*\"],\"ExposeHeaders\":[\"ETag\",\"x-amz-request-id\"],\"MaxAgeSeconds\":3600}]}' > /tmp/cors.json; /usr/bin/mc cors set myminio/\$S3_BUCKET_NAME /tmp/cors.json; /usr/bin/mc anonymous set download myminio/\$S3_BUCKET_NAME; echo 'Bucket created and CORS configured.'; exit 0; "
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        /usr/bin/mc alias set myminio http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        /usr/bin/mc mb "myminio/$$S3_BUCKET_NAME" --ignore-existing
+        /usr/bin/mc anonymous set private "myminio/$$S3_BUCKET_NAME"
+        echo 'Private bucket is ready.'
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   fe:
     build:
@@ -112,13 +166,25 @@ services:
         - workx-fe:latest
     image: workx-fe:latest
     container_name: workx-fe
+    restart: unless-stopped
     environment:
       VITE_API_URL: "${VITE_API_URL:-http://localhost:5000}"
       VITE_CLERK_PUBLISHABLE_KEY: "${VITE_CLERK_PUBLISHABLE_KEY:-pk_test_ZmFjdHVhbC1yZXB0aWxlLTc1LmNsZXJrLmFjY291bnRzLmRldiQ}"
+    # FE_PORT (host_ip:port, e.g. "127.0.0.1:8080") lets staging/prod bind to
+    # loopback behind nginx while local dev keeps the plain 4200 default. It
+    # existed only on staging-deployment (f2c77f4), never merged to main —
+    # deploying main-derived code to the VM as-is silently ignored the VM's
+    # existing FE_PORT=127.0.0.1:8080 in .env and 502'd the live site until
+    # this was restored.
     ports:
-      - "4200:80"
+      - "${FE_PORT:-4200}:80"
     depends_on:
       - be
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   worker:
       extra_hosts:
@@ -128,6 +194,7 @@ services:
         dockerfile: Dockerfile
       image: workx-worker:latest
       container_name: workx-worker
+      restart: unless-stopped
       environment:
               AI_SERVICE_BASE_URL: "${AI_SERVICE_BASE_URL:-http://host.docker.internal:8000}"
               REDIS_URL: "redis://redis:6379/0"
@@ -149,6 +216,11 @@ services:
         timeout: 10s
         retries: 3
         start_period: 15s
+      logging:
+        driver: json-file
+        options:
+          max-size: "50m"
+          max-file: "3"
 
 volumes:
   workx-db-data:

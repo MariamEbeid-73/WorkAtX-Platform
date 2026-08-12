@@ -1,0 +1,118 @@
+substitutions:
+  _DEPLOY: "false"
+  _REGION: me-central1
+  _VM_NAME: workx-staging
+  _VM_ZONE: me-central1-a
+  _REMOTE_USER: workxdeploy
+
+steps:
+  - id: pull-be-cache
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    entrypoint: bash
+    args: ["-ceu", "docker pull '${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/backend:build-cache' || true"]
+  - id: pull-fe-cache
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    entrypoint: bash
+    args: ["-ceu", "docker pull '${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/frontend:build-cache' || true"]
+  - id: pull-worker-cache
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    entrypoint: bash
+    args: ["-ceu", "docker pull '${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/worker:build-cache' || true"]
+
+  - id: build-be
+    name: gcr.io/cloud-builders/docker
+    waitFor: [pull-be-cache]
+    args:
+      - build
+      - --platform=linux/amd64
+      - --cache-from=${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/backend:build-cache
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/backend:${COMMIT_SHA}
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/backend:build-cache
+      - ./BE
+  - id: build-fe
+    name: gcr.io/cloud-builders/docker
+    waitFor: [pull-fe-cache]
+    args:
+      - build
+      - --platform=linux/amd64
+      - --cache-from=${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/frontend:build-cache
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/frontend:${COMMIT_SHA}
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/frontend:build-cache
+      - ./FE
+  - id: build-worker
+    name: gcr.io/cloud-builders/docker
+    waitFor: [pull-worker-cache]
+    args:
+      - build
+      - --platform=linux/amd64
+      - --cache-from=${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/worker:build-cache
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/worker:${COMMIT_SHA}
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/worker:build-cache
+      - ./Worker
+
+  - id: push-be
+    name: gcr.io/cloud-builders/docker
+    waitFor: [build-be]
+    entrypoint: bash
+    args: ["-ceu", "docker push '${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/backend:${COMMIT_SHA}' && docker push '${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/backend:build-cache'"]
+  - id: push-fe
+    name: gcr.io/cloud-builders/docker
+    waitFor: [build-fe]
+    entrypoint: bash
+    args: ["-ceu", "docker push '${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/frontend:${COMMIT_SHA}' && docker push '${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/frontend:build-cache'"]
+  - id: push-worker
+    name: gcr.io/cloud-builders/docker
+    waitFor: [build-worker]
+    entrypoint: bash
+    args: ["-ceu", "docker push '${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/worker:${COMMIT_SHA}' && docker push '${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images/worker:build-cache'"]
+
+  - id: deploy-platform
+    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:stable
+    waitFor: [push-be, push-fe, push-worker]
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        if [[ "${_DEPLOY}" != "true" ]]; then
+          echo "Build-only mode; the VM will not be changed."
+          exit 0
+        fi
+        apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends openssh-client >/dev/null
+        [[ "${COMMIT_SHA}" =~ ^[0-9a-fA-F]{40}$ ]] || { echo "Cloud Build did not provide a full commit SHA." >&2; exit 2; }
+        [[ "${BRANCH_NAME}" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "Unsupported branch name." >&2; exit 2; }
+
+        bundle_dir="$$(mktemp -d)"
+        cp deploy/vm/docker-compose.yml "$${bundle_dir}/docker-compose.yml"
+        cp deploy/vm/remote-deploy.sh "$${bundle_dir}/remote-deploy.sh"
+        cp deploy/vm/remote-logs.sh "$${bundle_dir}/remote-logs.sh"
+        mkdir -p "$${bundle_dir}/nginx"
+        cp deploy/staging/nginx/workx.conf "$${bundle_dir}/nginx/workx.conf"
+        chmod 0755 "$${bundle_dir}/remote-deploy.sh" "$${bundle_dir}/remote-logs.sh"
+        tar -czf /tmp/workx-platform-deploy.tgz -C "$${bundle_dir}" .
+
+        target="${_REMOTE_USER}@${_VM_NAME}"
+        gcloud compute scp /tmp/workx-platform-deploy.tgz "$${target}:/tmp/workx-platform-deploy-${BUILD_ID}.tgz" \
+          --zone="${_VM_ZONE}" --project="${PROJECT_ID}" --quiet --ssh-key-expire-after=30m
+        printf -v install_cmd \
+          'sudo install -d -m 0755 /srv/workx/deploy/platform && sudo tar -xzf %q -C /srv/workx/deploy/platform && sudo chmod 0755 /srv/workx/deploy/platform/remote-deploy.sh /srv/workx/deploy/platform/remote-logs.sh && rm -f %q' \
+          "/tmp/workx-platform-deploy-${BUILD_ID}.tgz" "/tmp/workx-platform-deploy-${BUILD_ID}.tgz"
+        gcloud compute ssh "$${target}" --zone="${_VM_ZONE}" --project="${PROJECT_ID}" \
+          --quiet --ssh-key-expire-after=30m --command="$${install_cmd}"
+
+        prefix="${_REGION}-docker.pkg.dev/${PROJECT_ID}/workx-images"
+        printf -v deploy_cmd \
+          'sudo /srv/workx/deploy/platform/remote-deploy.sh --be-image %q --fe-image %q --worker-image %q --sha %q --branch %q --build-id %q' \
+          "$${prefix}/backend:${COMMIT_SHA}" "$${prefix}/frontend:${COMMIT_SHA}" \
+          "$${prefix}/worker:${COMMIT_SHA}" "${COMMIT_SHA}" "${BRANCH_NAME}" "${BUILD_ID}"
+        gcloud compute ssh "$${target}" --zone="${_VM_ZONE}" --project="${PROJECT_ID}" \
+          --quiet --ssh-key-expire-after=30m --command="$${deploy_cmd}"
+
+options:
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 3600s

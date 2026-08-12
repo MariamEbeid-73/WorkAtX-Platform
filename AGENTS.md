@@ -14,9 +14,9 @@ This file is the entry point. Per-component details live in the component `AGENT
 
 ## Getting started
 
-- `./startup.sh` — the one command. Builds `workx-be` / `workx-fe` / `workx-worker` images and runs the whole compose stack (`scripts/startup-common.sh`). Requires Docker.
+- `make setup && make run` — supported onboarding. `make run` calls `./startup.sh`, builds `workx-be` / `workx-fe` / `workx-worker`, and runs the whole local stack. Requires Docker.
 - Manual: `docker compose up -d --build`. Stop: `docker compose down`. Logs: `docker compose logs -f`.
-- Env: `.env.development` is the **tracked** dev source of truth; copy it to `.env` (gitignored) and adjust. All dev defaults are safe to commit.
+- Env: `.env.example` is the portable template. `make setup` copies it to the gitignored root `.env` only when missing. `.env.development` remains as existing reference data but is not loaded automatically.
 
 ### Ports
 | Service | URL |
@@ -60,7 +60,7 @@ State: `queued → processing → completed | failed`. Never leave a job stuck i
 - Kombu message envelope in `BE/Services/JobQueueService.cs` uses literal kebab/snake_case keys (`content-type`, `root_id`, `delivery_tag`, ...). Do NOT "clean up" the casing — Celery rejects camelCase.
 - `.env` is gitignored; `.env.development` is the committed dev config. Put secrets (Groq key, GitHub/LinkedIn secrets) only in local `.env`.
 - Two stray 0-byte tracked files at root (`StackExchange.Redis.RedisConnectionException`, `docker`) are junk from an old crash; don't add more.
-- Deploy: `deploy/staging/.env` is tracked; `deploy/staging/` has no other content yet.
+- Deploy: `make deploy BRANCH=<branch>` runs a manual Cloud Build trigger. The staging VM pulls immutable images and uses `deploy/vm/docker-compose.yml`; it does not build or clone the repository.
 
 ## Layout
 - `BE/` — ASP.NET Core API (see `BE/AGENTS.md`)

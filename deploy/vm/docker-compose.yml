@@ -1,0 +1,169 @@
+name: iti_gp
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: workx-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${DB_USER:-postgres}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD:?DB_PASSWORD is required}"
+      POSTGRES_DB: "${DB_NAME:-WorkXDb}"
+    ports:
+      - "${DB_PORT:?DB_PORT is required}:5432"
+    volumes:
+      - workx-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-WorkXDb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: &bounded-logs
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    container_name: workx-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:?REDIS_PORT is required}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    logging: *bounded-logs
+
+  minio:
+    image: minio/minio:latest
+    container_name: workx-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}"
+      MINIO_API_CORS_ALLOW_ORIGIN: "${STAGING_FRONTEND_URL:-https://workx-iti.com}"
+    ports:
+      - "${MINIO_API_PORT:?MINIO_API_PORT is required}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - workx-minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging: *bounded-logs
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: workx-minio-init
+    restart: "no"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}"
+      S3_BUCKET_NAME: "${S3_BUCKET_NAME:-workx-resumes}"
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        /usr/bin/mc alias set myminio http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        /usr/bin/mc mb "myminio/$$S3_BUCKET_NAME" --ignore-existing
+        /usr/bin/mc anonymous set private "myminio/$$S3_BUCKET_NAME"
+    logging: *bounded-logs
+
+  be:
+    image: "${WORKX_BE_IMAGE:?WORKX_BE_IMAGE is required}"
+    container_name: workx-be
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Production}"
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      Clerk__Authority: "${CLERK_AUTHORITY:?CLERK_AUTHORITY is required}"
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=${DB_NAME:-WorkXDb};Username=${DB_USER:-postgres};Password=${DB_PASSWORD};"
+      S3__Endpoint: http://minio:9000
+      S3__BucketName: "${S3_BUCKET_NAME:-workx-resumes}"
+      S3__AccessKey: "${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID is required}"
+      S3__SecretKey: "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY is required}"
+      S3__Region: "${AWS_REGION:-us-east-1}"
+      S3__PublicEndpoint: "${STAGING_API_URL:-https://api.workx-iti.com}"
+      OAuth__GitHub__ClientId: "${GITHUB_CLIENT_ID:?GITHUB_CLIENT_ID is required}"
+      OAuth__GitHub__ClientSecret: "${GITHUB_CLIENT_SECRET:?GITHUB_CLIENT_SECRET is required}"
+      OAuth__GitHub__RedirectUri: "${STAGING_API_URL:-https://api.workx-iti.com}/oauth/github/callback"
+      OAuth__FrontendCallbackUrl: "${STAGING_FRONTEND_URL:-https://workx-iti.com}/oauth-return"
+      Encryption__Key: "${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}"
+      Redis__Configuration: redis:6379,abortConnect=false
+      Redis__CeleryTask: "${CELERY_TASK:-worker.tasks.process_job}"
+      Redis__CeleryQueue: "${CELERY_QUEUE:-celery}"
+      ServiceAuth__Token: "${SERVICE_AUTH_TOKEN:?SERVICE_AUTH_TOKEN is required}"
+      Summarization__Provider: "${SUMMARIZATION_PROVIDER:-extractive}"
+      Summarization__ApiUrl: "${SUMMARIZATION_API_URL:-}"
+      Summarization__ApiKey: "${SUMMARIZATION_API_KEY:-}"
+      Summarization__Model: "${SUMMARIZATION_MODEL:-gpt-4o-mini}"
+      Cors__AllowedOrigins: "${STAGING_CORS_ORIGINS:-https://workx-iti.com}"
+    ports:
+      - "${BE_PORT:?BE_PORT is required}:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    logging: *bounded-logs
+
+  fe:
+    image: "${WORKX_FE_IMAGE:?WORKX_FE_IMAGE is required}"
+    container_name: workx-fe
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: "${STAGING_FE_API_URL:-https://api.workx-iti.com}"
+      VITE_CLERK_PUBLISHABLE_KEY: "${VITE_CLERK_PUBLISHABLE_KEY:-}"
+    ports:
+      - "${FE_PORT:?FE_PORT is required}:80"
+    depends_on:
+      - be
+    logging: *bounded-logs
+
+  worker:
+    image: "${WORKX_WORKER_IMAGE:?WORKX_WORKER_IMAGE is required}"
+    container_name: workx-worker
+    restart: unless-stopped
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    environment:
+      AI_SERVICE_BASE_URL: "${AI_SERVICE_BASE_URL:-http://workx-ai-app:8000}"
+      REDIS_URL: redis://redis:6379/0
+      CELERY_TASK: "${CELERY_TASK:-worker.tasks.process_job}"
+      CELERY_QUEUE: "${CELERY_QUEUE:-celery}"
+      SERVICE_AUTH_TOKEN: "${SERVICE_AUTH_TOKEN:?SERVICE_AUTH_TOKEN is required}"
+      MOCK_AI: "${MOCK_AI:-false}"
+      MOCK_AI_ASYNC_GAP: "${MOCK_AI_ASYNC_GAP:-false}"
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A celery_app inspect ping -d celery@$$HOSTNAME"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging: *bounded-logs
+
+volumes:
+  workx-db-data:
+  workx-minio-data:
+

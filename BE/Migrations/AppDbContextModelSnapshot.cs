@@ -482,6 +482,12 @@ namespace BE.Migrations
                     b.Property<Guid?>("JobId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ProgressJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("{}");
+
                     b.Property<string>("ResultJson")
                         .IsRequired()
                         .HasColumnType("jsonb");

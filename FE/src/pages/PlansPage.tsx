@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useState, useMemo } from 'react';
+import { useAuth } from '@clerk/react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Flex,
   Typography,
@@ -9,6 +10,10 @@ import {
   Checkbox,
   Badge,
   Dropdown,
+  Alert,
+  Empty,
+  Spin,
+  message,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import {
@@ -25,7 +30,8 @@ import {
   RocketOutlined,
 } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
-import { DUMMY_PLANS, type WeekPlan } from '../types/plan';
+import type { StudyPlan, WeekPlan } from '../types/plan';
+import { getStudyPlans, normalizeStudyPlan, updateStudyPlanProgress } from '../services/planService';
 import './PlansPage.css';
 
 const { Title, Text } = Typography;
@@ -165,10 +171,11 @@ function IslandNode({ week, state, isSelected, position, onClick, floatDelay, is
 }
 
 function WeekDetail({
-  week, state, completedTasks, onToggleTask, onMarkComplete,
+  week, state, completedTasks, saving, onToggleTask, onMarkComplete,
 }: {
   week: WeekPlan; state: WeekState;
   completedTasks: Set<number>;
+  saving: boolean;
   onToggleTask: (idx: number) => void;
   onMarkComplete: () => void;
 }) {
@@ -220,8 +227,8 @@ function WeekDetail({
             const done = completedTasks.has(idx);
             return (
               <li key={idx} className={`week-detail__task-item${done ? ' week-detail__task-item--done' : ''}`}
-                onClick={() => onToggleTask(idx)}>
-                <Checkbox checked={done} />
+                onClick={() => { if (!saving) onToggleTask(idx); }}>
+                <Checkbox checked={done} disabled={saving} />
                 <Text style={{ color: done ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>{task}</Text>
               </li>
             );
@@ -269,7 +276,7 @@ function WeekDetail({
       {state !== 'completed' && (
         <div className="week-detail__actions">
           <Button type="primary" icon={<CheckCircleFilled />} size="large" disabled={!allTasksDone}
-            onClick={onMarkComplete}
+            onClick={onMarkComplete} loading={saving}
             style={{ background: allTasksDone ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)' : undefined, border: 'none' }}>
             {allTasksDone ? 'Mark Week Complete' : 'Complete all tasks to finish this week'}
           </Button>
@@ -280,23 +287,109 @@ function WeekDetail({
 }
 
 export function PlansPage() {
+  const { getToken } = useAuth();
+  const navigate = useNavigate();
+  const [plans, setPlans] = useState<StudyPlan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const token = await getToken();
+        if (!token) throw new Error('Not authenticated.');
+        const response = await getStudyPlans(token);
+        const normalized = response.data
+          .map(normalizeStudyPlan)
+          .filter((plan): plan is StudyPlan => plan !== null);
+        if (!cancelled) setPlans(normalized);
+      } catch (reason) {
+        console.error(reason);
+        if (!cancelled) setError('Your study plans could not be loaded. Please try again.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => { cancelled = true; };
+  }, [getToken, reloadKey]);
+
+  const saveProgress = async (
+    planId: string,
+    completedWeekIndexes: number[],
+    completedTaskIndexes: Record<string, number[]>,
+  ) => {
+    const previous = plans;
+    setPlans((current) => current.map((plan) => plan.id === planId
+      ? { ...plan, completedWeekIndexes, completedTaskIndexes }
+      : plan));
+
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Not authenticated.');
+      await updateStudyPlanProgress(token, planId, { completedWeekIndexes, completedTaskIndexes });
+    } catch (reason) {
+      console.error(reason);
+      setPlans(previous);
+      message.error('Progress could not be saved. Your last change was reverted.');
+      throw reason;
+    }
+  };
+
+  if (loading) {
+    return <Flex align="center" justify="center" style={{ minHeight: '55vh' }}><Spin size="large" tip="Loading your learning worlds…" /></Flex>;
+  }
+
+  if (error) {
+    return <Alert type="error" showIcon message="Could not load study plans" description={error}
+      action={<Button onClick={() => setReloadKey((key) => key + 1)}>Try again</Button>} />;
+  }
+
+  if (!plans.length) {
+    return (
+      <Flex align="center" justify="center" style={{ minHeight: '60vh' }}>
+        <Empty description="You don't have a study plan yet.">
+          <Button type="primary" onClick={() => navigate('/geni')}>Create a plan with Geni</Button>
+        </Empty>
+      </Flex>
+    );
+  }
+
+  return <PlansWorld plans={plans} onProgressChange={saveProgress} />;
+}
+
+function PlansWorld({
+  plans,
+  onProgressChange,
+}: {
+  plans: StudyPlan[];
+  onProgressChange: (
+    planId: string,
+    completedWeekIndexes: number[],
+    completedTaskIndexes: Record<string, number[]>,
+  ) => Promise<void>;
+}) {
   const [searchParams, setSearchParams] = useSearchParams();
   const planId = searchParams.get('planId');
-  const initialPlanIdx = Math.max(0, DUMMY_PLANS.findIndex((p) => p.id === planId));
+  const jobId = searchParams.get('jobId');
+  const initialPlanIdx = Math.max(0, plans.findIndex((p) => p.id === planId || p.jobId === jobId));
 
   const [activePlanIdx, setActivePlanIdx] = useState(initialPlanIdx);
   const [selectedWeekIdx, setSelectedWeekIdx] = useState<number | null>(null);
-  const [completedWeeks, setCompletedWeeks] = useState<Map<string, Set<number>>>(
-    () => new Map(DUMMY_PLANS.map((p) => [p.id, p.id === 'plan-1' ? new Set([0, 1, 2, 3, 4]) : p.id === 'plan-2' ? new Set() : new Set([0])])),
-  );
-  const [completedTasks, setCompletedTasks] = useState<Map<string, Map<number, Set<number>>>>(
-    () => new Map(DUMMY_PLANS.map((p) => [p.id, new Map()])),
-  );
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [savingProgress, setSavingProgress] = useState(false);
 
-  const currentPlan = DUMMY_PLANS[activePlanIdx];
-  const planCompletedWeeks = completedWeeks.get(currentPlan.id) ?? new Set();
-  const planCompletedTasks = completedTasks.get(currentPlan.id) ?? new Map<number, Set<number>>();
+  const currentPlan = plans[Math.min(activePlanIdx, plans.length - 1)];
+  const planCompletedWeeks = new Set(currentPlan.completedWeekIndexes);
+  const planCompletedTasks = new Map<number, Set<number>>(
+    Object.entries(currentPlan.completedTaskIndexes).map(([week, tasks]) => [Number(week), new Set(tasks)]),
+  );
   const completedCount = planCompletedWeeks.size;
   const progressPercent = Math.round((completedCount / currentPlan.total_weeks) * 100);
 
@@ -332,7 +425,7 @@ export function PlansPage() {
     setActivePlanIdx(idx);
     setSelectedWeekIdx(null);
     setDropdownOpen(false);
-    const p = DUMMY_PLANS[idx];
+    const p = plans[idx];
     setSearchParams({ planId: p.id }, { replace: true });
   };
 
@@ -340,15 +433,33 @@ export function PlansPage() {
     setSelectedWeekIdx(idx === selectedWeekIdx ? null : idx);
   };
 
-  const handleMarkWeekComplete = () => {
+  const persistProgress = async (
+    completedWeekIndexes: number[],
+    completedTaskIndexes: Record<string, number[]>,
+  ) => {
+    if (savingProgress) return;
+    setSavingProgress(true);
+    try {
+      await onProgressChange(currentPlan.id, completedWeekIndexes, completedTaskIndexes);
+    } finally {
+      setSavingProgress(false);
+    }
+  };
+
+  const handleMarkWeekComplete = async () => {
     if (selectedWeekIdx === null) return;
     if (!planCompletedWeeks.has(selectedWeekIdx)) {
       const next = new Set(planCompletedWeeks);
       next.add(selectedWeekIdx);
-      const n = new Map(completedWeeks);
-      n.set(currentPlan.id, next);
-      setCompletedWeeks(n);
-      setSelectedWeekIdx(null);
+      try {
+        await persistProgress(
+          [...next].sort((a, b) => a - b),
+          currentPlan.completedTaskIndexes,
+        );
+        setSelectedWeekIdx(null);
+      } catch {
+        // The parent restores the previous server-backed snapshot.
+      }
     }
   };
 
@@ -358,15 +469,14 @@ export function PlansPage() {
     const nextWeekTasks = new Set(weekTasks);
     if (nextWeekTasks.has(taskIdx)) nextWeekTasks.delete(taskIdx);
     else nextWeekTasks.add(taskIdx);
-    const newWeekMap = new Map(planCompletedTasks);
-    newWeekMap.set(selectedWeekIdx, nextWeekTasks);
-    const newPlanMap = new Map(completedTasks);
-    newPlanMap.set(currentPlan.id, newWeekMap);
-    setCompletedTasks(newPlanMap);
+    const completedTaskIndexes = { ...currentPlan.completedTaskIndexes };
+    if (nextWeekTasks.size) completedTaskIndexes[String(selectedWeekIdx)] = [...nextWeekTasks].sort((a, b) => a - b);
+    else delete completedTaskIndexes[String(selectedWeekIdx)];
+    void persistProgress(currentPlan.completedWeekIndexes, completedTaskIndexes).catch(() => undefined);
   };
 
   const planMenu: MenuProps = {
-    items: DUMMY_PLANS.map((p, i) => ({
+    items: plans.map((p, i) => ({
       key: String(i),
       label: (
         <Flex align="center" justify="space-between" gap={12} style={{ padding: '4px 0' }}>
@@ -521,7 +631,7 @@ export function PlansPage() {
         {selectedWeekIdx !== null && activeWeek ? (
           <WeekDetail key={`${activePlanIdx}-${selectedWeekIdx}`}
             week={activeWeek} state={getWeekState(selectedWeekIdx)}
-            completedTasks={activeTasksSet} onToggleTask={handleToggleTask}
+            completedTasks={activeTasksSet} saving={savingProgress || getWeekState(selectedWeekIdx) === 'completed'} onToggleTask={handleToggleTask}
             onMarkComplete={handleMarkWeekComplete} />
         ) : (
           <motion.div className="no-island-selected" key="empty"

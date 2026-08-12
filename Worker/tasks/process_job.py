@@ -4,7 +4,6 @@ from celery_app import app
 from app import backend_client
 from tasks.chat_job import handle_chat
 from tasks.analysis1_job import handle_analysis_1
-from progress_publisher import publish_progress
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +18,12 @@ STATUS_FAILED = "failed"
     name="worker.tasks.process_job",
     bind=True,
     max_retries=3,
-    soft_time_limit=120,
-    time_limit=130
+    # Must exceed ai_client's own timeout (300s, see app/ai_client.py) or
+    # Celery kills the task mid-request before the AI service's own HTTP
+    # client even times out — a cold gap-analysis scrape routinely takes
+    # several minutes end to end.
+    soft_time_limit=330,
+    time_limit=360
 )
 def process_job(self, jobId: str = None, **kwargs):
     return _process_job_impl(self, jobId=jobId, **kwargs)
@@ -79,11 +82,6 @@ def _handle_retry(task_obj, exc, job_id: str):
 
 
 def _safe_submit_failed_status(job_id: str, error_msg: str):
-    try:
-        publish_progress(job_id=job_id, stage="failed", percent=100)
-    except Exception as e:
-        logger.warning(f"[Process Job] Failed to publish stream failure event for {job_id}: {e}")
-
     try:
         backend_client.submit_job_result(job_id=job_id, status=STATUS_FAILED, error=error_msg)
     except Exception as e:

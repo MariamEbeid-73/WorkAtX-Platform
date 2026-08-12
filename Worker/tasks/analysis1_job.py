@@ -6,7 +6,9 @@ from app.exceptions import MalformedAIResponseError
 from progress_publisher import publish_progress
 
 logger = logging.getLogger(__name__)
-TIMEOUT_ANALYSIS_1 = 60
+# CV parsing runs gemini-2.5-pro (resume + profile fusion) plus live GitHub/
+# LinkedIn scraping — 60s was tight enough to time out on a slow profile.
+TIMEOUT_ANALYSIS_1 = 120
 
 
 def handle_analysis_1(task, job_id: str, job_data: dict):
@@ -55,6 +57,5 @@ def handle_analysis_1(task, job_id: str, job_data: dict):
     result_json = json.dumps(result_payload)
     backend_client.submit_job_result(job_id=job_id, status="completed", result_json=result_json)
 
-    publish_progress(job_id=job_id, stage="completed", percent=100)
     logger.info(f"[Analysis 1 Handler] [JobId={job_id}] Successfully completed and persisted result")
     return {"jobId": job_id, "status": "completed"}

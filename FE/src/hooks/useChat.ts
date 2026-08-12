@@ -9,8 +9,15 @@ import {
     attachMissingResults,
     submitTechChoiceSelections,
 } from "../services/chatService";
-import { waitForJobCompletion } from "../services/jobService";
-import type { ChatSessionDto, UiChatMessage, TechChoiceSelections } from "../types/chat";
+import { getJobStatus, waitForJobCompletion } from "../services/jobService";
+import type { ChatSessionDto, JobStatusDto, UiChatMessage, TechChoiceSelections } from "../types/chat";
+
+interface RestoredPendingJob {
+    jobId: string;
+    sessionId: string;
+}
+
+const ACTIVE_CHAT_SESSION_KEY = "workx-active-chat-session";
 
 function toUiMessage(m: {
     id: string;
@@ -52,12 +59,14 @@ export function useChat() {
     const [isSending, setIsSending] = useState(false);
     const [sendError, setSendError] = useState<string | null>(null);
     const [pendingStage, setPendingStage] = useState<string | null>(null);
+    const [restoredPendingJobs, setRestoredPendingJobs] = useState<RestoredPendingJob[]>([]);
 
     // Guards against a stale poll loop overwriting state after the user
     // switches sessions mid-request.
     const activeSessionRef = useRef<string | null>(null);
     activeSessionRef.current = activeSessionId;
     const pollAbortRef = useRef<AbortController | null>(null);
+    const sessionRestoreAttemptedRef = useRef(false);
 
     const refreshSessions = useCallback(async () => {
         setSessionsLoading(true);
@@ -124,7 +133,7 @@ export function useChat() {
                     return r;
                 };
 
-                const normalized = backfilled.map((m) => {
+                const normalized: UiChatMessage[] = backfilled.map((m) => {
                     const ui = toUiMessage(m as any);
                     const res = (m as any).result ?? null;
                     const norm = normalize(res);
@@ -145,9 +154,75 @@ export function useChat() {
                     return ui;
                 });
 
+                // A user turn is persisted before its job is published, while
+                // the assistant turn is written only when the worker finishes.
+                // That durable JobId relationship lets us reconstruct pending
+                // bubbles after a refresh without a new backend endpoint.
+                const assistantJobIds = new Set(
+                    normalized
+                        .filter((m) => m.role === "assistant" && m.jobId)
+                        .map((m) => m.jobId as string),
+                );
+                const orphanedUserTurns = normalized.filter(
+                    (m) => m.role === "user" && m.jobId && !assistantJobIds.has(m.jobId),
+                );
+                const orphanedStatuses = await Promise.all(
+                    orphanedUserTurns.map(async (m) => {
+                        try {
+                            return await getJobStatus(token, m.jobId as string);
+                        } catch {
+                            return null;
+                        }
+                    }),
+                );
+                const statusByJobId = new Map(
+                    orphanedStatuses
+                        .filter((status) => status !== null)
+                        .map((status) => [status.jobId, status]),
+                );
+
+                const restoredMessages = normalized.flatMap((m): UiChatMessage[] => {
+                    if (m.role !== "user" || !m.jobId) return [m];
+                    const status = statusByJobId.get(m.jobId);
+                    if (!status) return [m];
+
+                    if (status.status === "failed") {
+                        return [m, {
+                            id: `failed-${status.jobId}`,
+                            role: "assistant",
+                            content: "",
+                            responseType: null,
+                            jobId: status.jobId,
+                            result: null,
+                            createdAt: status.updatedAt,
+                            failed: true,
+                        }];
+                    }
+
+                    return [m, {
+                        id: `pending-${status.jobId}`,
+                        role: "assistant",
+                        content: "",
+                        responseType: null,
+                        jobId: status.jobId,
+                        result: null,
+                        createdAt: status.updatedAt,
+                        pending: true,
+                        pendingStage: status.status === "completed"
+                            ? "Finalizing response…"
+                            : status.stage,
+                        pendingProgress: status.progress,
+                    }];
+                });
+
+                const jobsToResume = orphanedStatuses
+                    .filter((status): status is JobStatusDto => status !== null && status.status !== "failed")
+                    .map((status) => ({ jobId: status.jobId, sessionId }));
+
                 // Only apply if the user hasn't since navigated to a different session.
                 if (activeSessionRef.current === sessionId) {
-                    setMessages(normalized);
+                    setMessages(restoredMessages);
+                    setRestoredPendingJobs(jobsToResume);
                 }
             } catch (err) {
                 setSendError(friendlyError(err));
@@ -160,15 +235,111 @@ export function useChat() {
         [getToken]
     );
 
+    // Resume active jobs discovered while reconstructing a session. The same
+    // waiter handles SignalR plus polling, and loadMessages replaces synthetic
+    // bubbles with the authoritative assistant rows when all jobs finish.
+    useEffect(() => {
+        if (restoredPendingJobs.length === 0) return;
+
+        const sessionId = restoredPendingJobs[0].sessionId;
+        const controller = new AbortController();
+        pollAbortRef.current?.abort();
+        pollAbortRef.current = controller;
+        let disposed = false;
+        setIsSending(true);
+
+        const resume = async () => {
+            try {
+                const token = await getToken();
+                if (!token) throw new Error("Not authenticated.");
+
+                await Promise.all(restoredPendingJobs.map(async ({ jobId }) => {
+                    const final = await waitForJobCompletion(getToken, token, jobId, {
+                        signal: controller.signal,
+                        onProgress: (update) => {
+                            if (disposed || activeSessionRef.current !== sessionId) return;
+                            if (update.stage) setPendingStage(update.stage);
+                            setMessages((prev) => prev.map((m) => {
+                                if (!m.pending || m.jobId !== jobId) return m;
+                                const nextStage = update.stage ?? m.pendingStage;
+                                if (nextStage === m.pendingStage && update.progress === m.pendingProgress) return m;
+                                return {
+                                    ...m,
+                                    pendingStage: nextStage,
+                                    pendingProgress: update.progress,
+                                };
+                            }));
+                        },
+                    });
+
+                    if (final.status === "failed") {
+                        setMessages((prev) => prev.map((m) =>
+                            m.pending && m.jobId === jobId
+                                ? { ...m, pending: false, failed: true }
+                                : m
+                        ));
+                    }
+                }));
+
+                if (!disposed && activeSessionRef.current === sessionId) {
+                    await loadMessages(sessionId);
+                    void refreshSessions();
+                }
+            } catch (err) {
+                if (err instanceof DOMException && err.name === "AbortError") return;
+                if (!disposed && activeSessionRef.current === sessionId) {
+                    setSendError(friendlyError(err));
+                    setMessages((prev) => prev.map((m) =>
+                        m.pending ? { ...m, pending: false, failed: true } : m
+                    ));
+                    setRestoredPendingJobs([]);
+                }
+            } finally {
+                if (!disposed && activeSessionRef.current === sessionId) {
+                    setIsSending(false);
+                    setPendingStage(null);
+                }
+            }
+        };
+
+        void resume();
+        return () => {
+            disposed = true;
+            controller.abort();
+        };
+    }, [getToken, loadMessages, refreshSessions, restoredPendingJobs]);
+
     useEffect(() => {
         refreshSessions();
     }, [refreshSessions]);
 
+    useEffect(() => {
+        if (sessionsLoading || sessionRestoreAttemptedRef.current) return;
+        sessionRestoreAttemptedRef.current = true;
+
+        const savedSessionId = window.sessionStorage.getItem(ACTIVE_CHAT_SESSION_KEY);
+        if (!savedSessionId) return;
+
+        if (!sessions.some((session) => session.id === savedSessionId)) {
+            window.sessionStorage.removeItem(ACTIVE_CHAT_SESSION_KEY);
+            return;
+        }
+
+        activeSessionRef.current = savedSessionId;
+        setActiveSessionId(savedSessionId);
+        void loadMessages(savedSessionId);
+    }, [loadMessages, sessions, sessionsLoading]);
+
     /** Sidebar "New Chat" — clears the window; the session itself is created lazily on first send. */
     const startNewChat = useCallback(() => {
         pollAbortRef.current?.abort();
+        window.sessionStorage.removeItem(ACTIVE_CHAT_SESSION_KEY);
+        activeSessionRef.current = null;
         setActiveSessionId(null);
         setMessages([]);
+        setRestoredPendingJobs([]);
+        setIsSending(false);
+        setPendingStage(null);
         setSendError(null);
     }, []);
 
@@ -177,9 +348,14 @@ export function useChat() {
         (sessionId: string) => {
             if (sessionId === activeSessionId) return;
             pollAbortRef.current?.abort();
+            activeSessionRef.current = sessionId;
+            window.sessionStorage.setItem(ACTIVE_CHAT_SESSION_KEY, sessionId);
             setActiveSessionId(sessionId);
+            setRestoredPendingJobs([]);
+            setIsSending(false);
+            setPendingStage(null);
             setSendError(null);
-            loadMessages(sessionId);
+            void loadMessages(sessionId);
         },
         [activeSessionId, loadMessages]
     );
@@ -193,6 +369,7 @@ export function useChat() {
             setIsSending(true);
             const controller = new AbortController();
             pollAbortRef.current = controller;
+            let pendingMessageId: string | null = null;
             try {
                 const token = await getToken();
                 if (!token) throw new Error("Not authenticated.");
@@ -208,9 +385,35 @@ export function useChat() {
                 const newJobId = (res as any).jobId;
                 if (!newJobId) throw new Error("Backend did not return jobId.");
 
+                pendingMessageId = `pending-${newJobId}`;
+                setMessages((prev) => [...prev, {
+                    id: pendingMessageId as string,
+                    role: "assistant",
+                    content: "",
+                    responseType: null,
+                    jobId: newJobId,
+                    result: null,
+                    createdAt: new Date().toISOString(),
+                    pending: true,
+                    pendingStage: null,
+                    pendingProgress: null,
+                }]);
+
                 const final = await waitForJobCompletion(getToken, token, newJobId, {
                     signal: controller.signal,
-                    onProgress: (u) => setPendingStage(u.stage),
+                    onProgress: (update) => {
+                        if (update.stage) setPendingStage(update.stage);
+                        setMessages((prev) => prev.map((m) => {
+                            if (m.jobId !== newJobId || !m.pending) return m;
+                            const nextStage = update.stage ?? m.pendingStage;
+                            if (nextStage === m.pendingStage && update.progress === m.pendingProgress) return m;
+                            return {
+                                ...m,
+                                pendingStage: nextStage,
+                                pendingProgress: update.progress,
+                            };
+                        }));
+                    },
                 });
 
                 if (final.status === "failed") throw new Error(final.error ?? "Resume failed");
@@ -221,6 +424,13 @@ export function useChat() {
             } catch (err) {
                 if (err instanceof DOMException && err.name === "AbortError") return;
                 setSendError(friendlyError(err));
+                if (pendingMessageId) {
+                    setMessages((prev) => prev.map((m) =>
+                        m.id === pendingMessageId
+                            ? { ...m, pending: false, failed: true }
+                            : m
+                    ));
+                }
             } finally {
                 setIsSending(false);
                 setPendingStage(null);
@@ -266,6 +476,7 @@ export function useChat() {
             if (!trimmed || isSending) return;
 
             setSendError(null);
+            setPendingStage(null);
             const token = await getToken();
             if (!token) {
                 setSendError("Not authenticated.");
@@ -273,10 +484,12 @@ export function useChat() {
             }
 
             const sessionIdAtSend = activeSessionRef.current;
+            const optimisticId = Date.now();
+            const pendingMessageId = `pending-${optimisticId}`;
 
             // Optimistic user bubble and assistant pending placeholder.
             const optimisticUser: UiChatMessage = {
-                id: `local-${Date.now()}`,
+                id: `local-${optimisticId}`,
                 role: "user",
                 content: trimmed,
                 responseType: null,
@@ -285,7 +498,7 @@ export function useChat() {
                 createdAt: new Date().toISOString(),
             };
             const pendingAssistant: UiChatMessage = {
-                id: `pending-${Date.now()}`,
+                id: pendingMessageId,
                 role: "assistant",
                 content: "",
                 responseType: null,
@@ -293,6 +506,8 @@ export function useChat() {
                 result: null,
                 createdAt: new Date().toISOString(),
                 pending: true,
+                pendingStage: null,
+                pendingProgress: null,
             };
             setMessages((prev) => [...prev, optimisticUser, pendingAssistant]);
             setIsSending(true);
@@ -308,17 +523,35 @@ export function useChat() {
                     sessionIdAtSend
                 );
 
+                setMessages((prev) => prev.map((m) =>
+                    m.id === pendingMessageId ? { ...m, jobId } : m
+                ));
+
                 // Lazily set new active session ID if started from fresh chat window.
                 if (!sessionIdAtSend) {
                     setActiveSessionId(sessionId);
                     activeSessionRef.current = sessionId;
+                    window.sessionStorage.setItem(ACTIVE_CHAT_SESSION_KEY, sessionId);
                     refreshSessions();
                 }
 
                 // Polls until background Celery job finishes execution.
                 const finalStatus = await waitForJobCompletion(getToken, token, jobId, {
                     signal: controller.signal,
-                    onProgress: (u) => setPendingStage(u.stage),
+                    onProgress: (update) => {
+                        if (update.stage) setPendingStage(update.stage);
+                        setMessages((prev) => prev.map((m) => {
+                            if (m.id !== pendingMessageId) return m;
+                            const nextStage = update.stage ?? m.pendingStage;
+                            if (m.jobId === jobId && nextStage === m.pendingStage && update.progress === m.pendingProgress) return m;
+                            return {
+                                ...m,
+                                jobId,
+                                pendingStage: nextStage,
+                                pendingProgress: update.progress,
+                            };
+                        }));
+                    },
                 });
 
                 if (finalStatus.status === "failed") {
@@ -337,7 +570,9 @@ export function useChat() {
                 setSendError(friendlyError(err));
                 setMessages((prev) =>
                     prev.map((m) =>
-                        m.pending ? { ...m, pending: false, failed: true } : m
+                        m.id === pendingMessageId
+                            ? { ...m, pending: false, failed: true }
+                            : m
                     )
                 );
             } finally {

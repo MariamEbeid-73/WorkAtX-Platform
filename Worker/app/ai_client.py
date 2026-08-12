@@ -7,6 +7,12 @@ from progress_publisher import publish_progress
 logger = logging.getLogger(__name__)
 
 AI_SERVICE_BASE_URL = os.getenv("AI_SERVICE_BASE_URL", "http://host.docker.internal:8000")
+# The AI service's /api/v1/ai/* endpoints require this header (constant-time
+# compare against the same secret) — same env var backend_client.py already
+# reads for calls to our own backend, since both sides agreed on one shared
+# service-to-service secret rather than a per-integration one.
+AI_SERVICE_TOKEN = os.getenv("SERVICE_AUTH_TOKEN", "dev-service-token")
+AI_SERVICE_HEADERS = {"X-Service-Token": AI_SERVICE_TOKEN}
 
 
 def _mock_ai_enabled() -> bool:
@@ -19,8 +25,11 @@ def call_process_api(
     session_id: str = None,
     message: str = None,
     context_summary: str = None,
-    timeout: int = 90,
+    timeout: int = 300,
 ) -> dict:
+    if not isinstance(message, str) or not message.strip():
+        raise ValueError(f"call_process_api requires 'message' (job_id={job_id})")
+
     if _mock_ai_enabled():
         logger.info(f"[AI Client - MOCK] Simulating process API response for user={user_id}, job={job_id}, session={session_id}")
 
@@ -30,11 +39,6 @@ def call_process_api(
         # created) — always has a `message`. There's a single code path
         # here; the AI is one-shot per job and has no notion of "resuming"
         # a prior job.
-        if message is None:
-            raise ValueError(
-                f"call_process_api requires 'message' (job_id={job_id})"
-            )
-
         msg_lower = message.lower()
 
         # Trigger 1: Gap Analysis with Radio Buttons (tech_choices)
@@ -105,8 +109,77 @@ def call_process_api(
         if "plan" in msg_lower:
             return {
                 "responseType": "study_plan",
-                "summary": "Mock 30-day study plan ready",
-                "weeks": [{"week": 1, "focus": "Fundamentals"}]
+                "response": {
+                    "title": "Backend Engineering Growth Plan",
+                    "summary": "A focused 30-day plan based on your selected technologies.",
+                    "total_weeks": 4,
+                    "weeks": [
+                        {
+                            "week": 1,
+                            "focus_skills": ["Docker", "Container fundamentals"],
+                            "goals": "Package an ASP.NET Core service into a reproducible container.",
+                            "tasks": [
+                                "Write a multi-stage Dockerfile",
+                                "Add container health checks",
+                                "Run the API and PostgreSQL with Docker Compose",
+                            ],
+                            "project": None,
+                            "resources": [
+                                {
+                                    "title": "Docker Get Started",
+                                    "platform": "Docker Docs",
+                                    "type": "docs",
+                                    "cost": "free",
+                                    "reason": "Official practical introduction to images and containers.",
+                                    "url": "https://docs.docker.com/get-started/",
+                                    "verified": True,
+                                }
+                            ],
+                        },
+                        {
+                            "week": 2,
+                            "focus_skills": ["Clean Architecture", "Testing"],
+                            "goals": "Separate application concerns and protect behavior with tests.",
+                            "tasks": [
+                                "Split domain, application, and infrastructure concerns",
+                                "Add unit tests for one use case",
+                                "Add an integration test for one API endpoint",
+                            ],
+                            "project": {
+                                "title": "Refactor a service boundary",
+                                "description": "Move one vertical feature into clear domain, application, and infrastructure layers.",
+                            },
+                            "resources": [],
+                        },
+                        {
+                            "week": 3,
+                            "focus_skills": ["Messaging", "Reliable background jobs"],
+                            "goals": "Build resilient asynchronous processing with observable state.",
+                            "tasks": [
+                                "Publish work to a message queue",
+                                "Implement idempotent message handling",
+                                "Add retry and dead-letter behavior",
+                            ],
+                            "project": None,
+                            "resources": [],
+                        },
+                        {
+                            "week": 4,
+                            "focus_skills": ["Cloud deployment", "Observability"],
+                            "goals": "Deploy and monitor the completed service.",
+                            "tasks": [
+                                "Create a CI build pipeline",
+                                "Deploy the containerized service",
+                                "Add structured logs and a latency dashboard",
+                            ],
+                            "project": {
+                                "title": "Production-ready backend",
+                                "description": "Ship the service with automated delivery, health checks, logs, and a short architecture note.",
+                            },
+                            "resources": [],
+                        },
+                    ],
+                },
             }
 
         # Default Chat Response
@@ -125,12 +198,23 @@ def call_process_api(
     }
 
     logger.info(f"[AI Client] Calling Unified Process API at {url} for job_id={job_id}, session_id={session_id}")
-    response = requests.post(url, json=payload, timeout=timeout)
-    response.raise_for_status()
+    start = time.perf_counter()
+    response = requests.post(url, json=payload, headers=AI_SERVICE_HEADERS, timeout=timeout)
+    duration_s = time.perf_counter() - start
+    if not response.ok:
+        logger.error(
+            f"[AI Client] Process API for job_id={job_id} returned {response.status_code} "
+            f"in {duration_s:.2f}s, body={response.text[:500]!r}"
+        )
+        response.raise_for_status()
+    logger.info(
+        f"[AI Client] Process API for job_id={job_id} -> {response.status_code} "
+        f"({len(response.content)} bytes) in {duration_s:.2f}s"
+    )
     return response.json()
 
 
-def call_analysis_1_api(cv_bytes: bytes, github_url: str = None, linkedin_url: str = None, timeout: int = 60) -> dict:
+def call_analysis_1_api(cv_bytes: bytes, github_url: str = None, linkedin_url: str = None, timeout: int = 120) -> dict:
     if _mock_ai_enabled():
         logger.info("[AI Client - MOCK] Simulating CV Parse API response")
         return {
@@ -208,8 +292,19 @@ def call_analysis_1_api(cv_bytes: bytes, github_url: str = None, linkedin_url: s
         data["linkedin_url"] = valid_linkedin
 
     logger.info(f"[AI Client] Calling Parse CV API at {url}")
-    response = requests.post(url, files=files, data=data, timeout=timeout)
-    response.raise_for_status()
+    start = time.perf_counter()
+    response = requests.post(url, files=files, data=data, headers=AI_SERVICE_HEADERS, timeout=timeout)
+    duration_s = time.perf_counter() - start
+    if not response.ok:
+        logger.error(
+            f"[AI Client] Parse CV API returned {response.status_code} "
+            f"in {duration_s:.2f}s, body={response.text[:500]!r}"
+        )
+        response.raise_for_status()
+    logger.info(
+        f"[AI Client] Parse CV API -> {response.status_code} "
+        f"({len(response.content)} bytes) in {duration_s:.2f}s"
+    )
     return response.json()
 
 

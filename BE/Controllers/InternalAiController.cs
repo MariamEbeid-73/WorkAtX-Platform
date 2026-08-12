@@ -29,18 +29,21 @@ public class InternalAiController : ControllerBase
     private readonly string _serviceToken;
     private readonly ISummarizationService _summarizationService;
     private readonly IHubContext<JobStatusHub> _hubContext;
+    private readonly ILogger<InternalAiController> _logger;
 
     public InternalAiController(
         AppDbContext db,
         IFileStorageService fileStorage,
         IConfiguration config,
         ISummarizationService summarizationService,
-        IHubContext<JobStatusHub> hubContext)
+        IHubContext<JobStatusHub> hubContext,
+        ILogger<InternalAiController> logger)
     {
         _db = db;
         _fileStorage = fileStorage;
         _summarizationService = summarizationService;
         _hubContext = hubContext;
+        _logger = logger;
         _serviceToken = config["ServiceAuth:Token"]
             ?? throw new InvalidOperationException("ServiceAuth:Token is not configured.");
     }
@@ -107,6 +110,10 @@ public class InternalAiController : ControllerBase
             ?? throw new NotFoundException($"No gap analysis found for user {userId}" +
                 (sessionId.HasValue ? $" and session {sessionId}." : "."));
 
+        _logger.LogInformation(
+            "Fetched gap analysis for user {UserId}, session {SessionId}, updated {UpdatedAt}",
+            userId, gapAnalysis.SessionId, gapAnalysis.UpdatedAt);
+
         object? result = null;
         if (!string.IsNullOrEmpty(gapAnalysis.ResultJson))
             result = JsonSerializer.Deserialize<JsonElement>(gapAnalysis.ResultJson);
@@ -134,6 +141,10 @@ public class InternalAiController : ControllerBase
             .FirstOrDefaultAsync()
             ?? throw new NotFoundException($"No study plan found for user {userId}" +
                 (sessionId.HasValue ? $" and session {sessionId}." : "."));
+
+        _logger.LogInformation(
+            "Fetched study plan for user {UserId}, session {SessionId}, updated {UpdatedAt}",
+            userId, plan.SessionId, plan.UpdatedAt);
 
         object? result = null;
         if (!string.IsNullOrEmpty(plan.ResultJson))
@@ -211,6 +222,10 @@ public class InternalAiController : ControllerBase
         job.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync();
 
+        _logger.LogInformation(
+            "Job {JobId} (type {JobType}, user {UserId}) picked up by worker, now Processing",
+            job.Id, job.JobType, job.UserId);
+
         // Push the queued -> processing transition immediately so a client
         // that's connected before the AI Node even picks up the job sees it
         // live, not just on its next poll.
@@ -270,19 +285,37 @@ public class InternalAiController : ControllerBase
         }
         catch (Exception ex)
         {
-            // NEW — a malformed/unroutable result still resolves the job as
-            // failed instead of leaving it stuck in "processing" forever.
+            _logger.LogError(
+                ex,
+                "Failed to route result for job {JobId} of type {JobType}",
+                job.Id,
+                job.JobType);
             effectiveStatus = JobStatus.Failed;
-            effectiveError = $"Result routing failed: {ex.Message}";
+            effectiveError = "Result routing failed.";
         }
 
         job.Status = effectiveStatus;
+        job.Stage = effectiveStatus;
+        job.Progress = 100;
         job.UpdatedAt = DateTimeOffset.UtcNow;
         job.ResultJson = effectiveStatus == JobStatus.Completed ? request.ResultJson : null;
         job.Error = effectiveStatus == JobStatus.Failed ? effectiveError : null;
 
         await _db.SaveChangesAsync();
         await BroadcastJobUpdateAsync(job);
+
+        if (effectiveStatus == JobStatus.Failed)
+        {
+            _logger.LogInformation(
+                "Result saved for job {JobId} (type {JobType}, user {UserId}): {Status} — {Error}",
+                job.Id, job.JobType, job.UserId, effectiveStatus, effectiveError);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "Result saved for job {JobId} (type {JobType}, user {UserId}): {Status}",
+                job.Id, job.JobType, job.UserId, effectiveStatus);
+        }
 
         return Ok(new AiResultResponse(job.Id, job.Status));
     }
@@ -389,9 +422,12 @@ public class InternalAiController : ControllerBase
                 session.SummaryText = updatedSummary;
                 session.SummaryUpdatedAt = DateTimeOffset.UtcNow;
             }
-            catch
+            catch (Exception ex)
             {
-                // keep the previous summary; don't fail result submission over this
+                _logger.LogWarning(
+                    ex,
+                    "Keeping the previous summary after summarization failed for session {SessionId}",
+                    session.Id);
             }
         }
     }

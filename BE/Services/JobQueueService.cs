@@ -31,12 +31,14 @@ public class JobQueueService : IJobQueueService
     private readonly IConnectionMultiplexer _redis;
     private readonly string _taskName;
     private readonly string _queueName;
+    private readonly ILogger<JobQueueService> _logger;
 
-    public JobQueueService(IConnectionMultiplexer redis, IConfiguration config)
+    public JobQueueService(IConnectionMultiplexer redis, IConfiguration config, ILogger<JobQueueService> logger)
     {
         _redis     = redis;
         _taskName  = config["Redis:CeleryTask"] ?? DefaultTaskName;
         _queueName = config["Redis:CeleryQueue"] ?? DefaultQueueName;
+        _logger    = logger;
     }
 
     public async Task PublishAsync(Guid jobId)
@@ -47,6 +49,10 @@ public class JobQueueService : IJobQueueService
         // Celery's Redis transport puts messages on the queue's list with
         // LPUSH and consumes them with a blocking BRPOP.
         await db.ListLeftPushAsync(_queueName, message);
+
+        _logger.LogInformation(
+            "Job {JobId} published to Celery queue {QueueName} (task {TaskName})",
+            jobId, _queueName, _taskName);
     }
 
     /// <summary>

@@ -23,7 +23,21 @@ export function getJobResult(
 }
 
 const POLL_INTERVAL_MS = 1500;
-const POLL_TIMEOUT_MS = 120_000; // 2 minutes — matches typical AI worker SLA
+// Must exceed the worker's Celery time_limit (360s, Worker/tasks/process_job.py)
+// or the UI gives up before the worker itself does on a cold gap-analysis
+// scrape (real scrapes routinely run 1-4 minutes).
+const POLL_TIMEOUT_MS = 370_000;
+
+function toJobStatusUpdate(status: JobStatusDto): JobStatusUpdate {
+  return {
+    jobId: status.jobId,
+    status: status.status,
+    stage: status.stage,
+    progress: status.progress,
+    error: status.error,
+    timestamp: status.updatedAt,
+  };
+}
 
 /**
  * Polls a job until it completes or fails, then resolves with its final
@@ -34,7 +48,10 @@ const POLL_TIMEOUT_MS = 120_000; // 2 minutes — matches typical AI worker SLA
 export async function pollJobUntilDone(
   token: string,
   jobId: string,
-  opts?: { signal?: AbortSignal },
+  opts?: {
+    signal?: AbortSignal;
+    onProgress?: (u: JobStatusUpdate) => void;
+  },
 ): Promise<JobStatusDto> {
   const start = Date.now();
 
@@ -43,6 +60,7 @@ export async function pollJobUntilDone(
       throw new DOMException("Polling aborted", "AbortError");
     }
     const status = await getJobStatus(token, jobId);
+    opts?.onProgress?.(toJobStatusUpdate(status));
     if (status.status === "completed" || status.status === "failed") {
       return status;
     }
@@ -76,13 +94,31 @@ export async function waitForJobCompletion(
   return new Promise((resolve, reject) => {
     let settled = false;
     let unsubscribe: (() => void) | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
 
     const finish = (fn: () => void) => {
       if (settled) return;
       settled = true;
+      if (fallbackTimer) clearTimeout(fallbackTimer);
       unsubscribe?.();
       fn();
     };
+
+    const reconcileStatus = (status: JobStatusDto) => {
+      opts.onProgress?.(toJobStatusUpdate(status));
+      if (status.status === "completed" || status.status === "failed") {
+        finish(() => resolve(status));
+      }
+    };
+
+    // Paint the authoritative persisted stage immediately. SignalR only
+    // delivers events emitted after subscription, so without this request a
+    // page opened mid-job can remain at 0% until the next progress event.
+    getJobStatus(token, jobId)
+      .then(reconcileStatus)
+      .catch(() => {
+        // The socket and polling fallback below still get a chance to recover.
+      });
 
     subscribeToJob(getToken, jobId, (update) => {
       opts.onProgress?.(update);
@@ -100,16 +136,28 @@ export async function waitForJobCompletion(
         );
       }
     })
-      .then((unsub) => {
+      .then(async (unsub) => {
+        if (settled) {
+          unsub();
+          return;
+        }
         unsubscribe = unsub;
+        // The job may have completed before this client joined the SignalR
+        // group. Reconcile once over HTTP so a missed terminal event renders
+        // immediately instead of waiting for the polling fallback.
+        const status = await getJobStatus(token, jobId);
+        reconcileStatus(status);
       })
       .catch(() => {
         /* socket failed to connect — fall back to polling below */
       });
 
-    const fallbackTimer = setTimeout(() => {
+    fallbackTimer = setTimeout(() => {
       finish(() => {
-        pollJobUntilDone(token, jobId, { signal: opts.signal }).then(
+        pollJobUntilDone(token, jobId, {
+          signal: opts.signal,
+          onProgress: opts.onProgress,
+        }).then(
           resolve,
           reject,
         );
@@ -117,7 +165,7 @@ export async function waitForJobCompletion(
     }, SOCKET_FALLBACK_MS);
 
     opts.signal?.addEventListener("abort", () => {
-      clearTimeout(fallbackTimer);
+      if (fallbackTimer) clearTimeout(fallbackTimer);
       finish(() => reject(new DOMException("Polling aborted", "AbortError")));
     });
   });

@@ -26,6 +26,14 @@ public class UserStudyPlan
     [Required]
     public string ResultJson { get; set; } = "{}";
 
+    /// <summary>
+    /// User-owned completion state for the generated plan. Stored separately
+    /// from the immutable AI result so checking off work never rewrites the
+    /// generated plan payload.
+    /// </summary>
+    [Required]
+    public string ProgressJson { get; set; } = "{}";
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

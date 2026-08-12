@@ -8,6 +8,7 @@ import {
     CheckOutlined,
     LinkOutlined,
     ExclamationCircleOutlined,
+    LoadingOutlined,
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import type { UiChatMessage, GapAnalysisResult, TechChoiceSelections } from '../../types/chat';
@@ -90,10 +91,9 @@ export function ChatMessageBubble({
                 )}
 
                 {message.pending ? (
-                    <span className="chat-bubble__typing">
-                        <span className="dot" />
-                        <span className="dot" />
-                        <span className="dot" />
+                    <span className="chat-bubble__pending-stage" role="status" aria-live="polite">
+                        <LoadingOutlined className="chat-bubble__pending-icon" />
+                        <span>{message.pendingStage?.trim() || 'Waiting for AI…'}</span>
                     </span>
                 ) : message.failed ? (
                     <Text type="danger">Couldn't get a response. Please try again.</Text>
@@ -116,7 +116,9 @@ export function ChatMessageBubble({
                                 type="primary"
                                 icon={<LinkOutlined />}
                                 size="small"
-                                onClick={() => navigate('/plans')}
+                                onClick={() => navigate(message.jobId
+                                    ? `/plans?jobId=${encodeURIComponent(message.jobId)}`
+                                    : '/plans')}
                                 style={{
                                     background: 'linear-gradient(135deg, #7C3AED 0%, #0891B2 100%)',
                                     border: 'none',

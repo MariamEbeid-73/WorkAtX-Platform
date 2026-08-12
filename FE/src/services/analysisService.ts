@@ -1,6 +1,7 @@
 import { api } from './api';
 import type { ApiResponse } from '../types/profile';
 import type { AnalysisResult } from '../types/analysis';
+import type { JobStatusDto } from '../types/chat';
 
 /** Response of POST /api/analysis1/start. */
 export interface StartAnalysisResponse {
@@ -18,3 +19,12 @@ export const startAnalysis = (token: string): Promise<StartAnalysisResponse> =>
  */
 export const getLatestAnalysis = (token: string): Promise<ApiResponse<AnalysisResult | null>> =>
   api<ApiResponse<AnalysisResult | null>>('/api/analysis1/latest', token);
+
+export interface AnalysisState {
+  analysis: AnalysisResult | null;
+  activeJob: JobStatusDto | null;
+}
+
+/** GET /api/analysis1/state — restores persisted data and in-flight work. */
+export const getAnalysisState = (token: string): Promise<ApiResponse<AnalysisState>> =>
+  api<ApiResponse<AnalysisState>>('/api/analysis1/state', token);
