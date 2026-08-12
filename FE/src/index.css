@@ -278,3 +278,93 @@ code, pre { font-family: var(--font-mono); font-size: 0.875rem; }
     [class*=" cl-"][class*="econdary"] {
         color: #F1F5F9 !important;
     }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Mobile responsiveness
+   All rules gated behind max-width breakpoints so desktop rendering is
+   pixel-identical. The app shell (AppLayout) collapses the fixed sidebar
+   into an off-canvas drawer below 960px.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Force horizontal containment on small screens — fixed hero glows and
+   wide grids used to leak out and cause a janky horizontal scrollbar. */
+@media (max-width: 960px) {
+  html, body {
+    overflow-x: hidden;
+  }
+
+  /* Tighter default content gutter for the authenticated layout. The shell
+     adds extra top padding on mobile to clear the mobile top bar. */
+  .app-content-area {
+    padding: 76px 16px 96px !important;
+  }
+
+  /* Many page headers use big side-by-side header rows; let them wrap and
+     shrink the title on phones. */
+  .app-content-inner h3.ant-typography,
+  .app-content-inner h2.ant-typography {
+    font-size: 1.5rem !important;
+  }
+}
+
+/* Phones — make KnowledgeGraphPage's hard-coded 3- and 2-column stat grids
+   collapse to a single column instead of crushing into thin slivers. */
+@media (max-width: 640px) {
+  .kg-stats-3 {
+    grid-template-columns: 1fr 1fr 1fr !important;
+    gap: 8px !important;
+  }
+  .kg-stats-2 {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  /* The hero "AI analysis in progress" ambient blobs are 600/300px wide and
+     push the page outward on phones. Clamp them. */
+  .kg-loading-blob-lg {
+    width: 320px !important;
+    height: 320px !important;
+  }
+  .kg-loading-blob-sm {
+    width: 180px !important;
+    height: 180px !important;
+    right: 0 !important;
+  }
+
+  /* The hero card on the analysis result has 32px gutters that eat phone
+     width; pull them in. */
+  .kg-hero-card {
+    padding: 22px 18px !important;
+    border-radius: 18px !important;
+  }
+
+  /* Domain score cards stack their 3 gauges with `flex: 1 1 100px` — on a
+     360px screen that wraps to one per row, which is fine, but reduce the
+     card padding so it doesn't dominate the viewport. */
+  .kg-domain-card {
+    padding: 18px !important;
+  }
+
+  /* Section cards in the analysis result. */
+  .kg-section-card {
+    padding: 20px !important;
+  }
+
+  /* Profile completion bar in the dashboard UserHeader card is a hard 120px;
+     let it grow to fill the available row on phones. */
+  .profile-completion-bar {
+    width: 100% !important;
+    max-width: 200px;
+  }
+}
+
+/* Small phones — collapse the 3-col GitHub stats grid into a row of three
+   compact tiles and shrink the numeric font so they don't overflow. */
+@media (max-width: 380px) {
+  .kg-stats-3 {
+    gap: 6px !important;
+  }
+  .kg-stats-3 .kg-stat-value {
+    font-size: 15px !important;
+  }
+}

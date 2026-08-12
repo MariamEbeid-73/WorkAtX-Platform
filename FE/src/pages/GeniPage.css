@@ -227,3 +227,45 @@
     max-width: 100%;
   }
 }
+
+/* ── Mobile chat sidebar backdrop (hidden on desktop) ───────────────────── */
+.geni-sidebar-backdrop {
+  display: none;
+}
+
+/* ── Mobile: ≤ 960px — give Geni room under the app top bar ────────────── */
+@media (max-width: 960px) {
+  /* The inline height is `calc(100vh - 88px)` (desktop assumption). On
+     mobile the app adds a 56px top bar, so subtract that plus a little
+     breathing room for the bottom safe area. */
+  .geni-page-root {
+    height: calc(100vh - 132px) !important;
+  }
+
+  .geni-chat-window {
+    padding: 14px 12px 12px;
+  }
+
+  .geni-hero__glow {
+    width: 100% !important;
+  }
+
+  .geni-hero__greeting {
+    font-size: 24px;
+  }
+
+  .geni-hero__subtitle {
+    font-size: 14px;
+  }
+
+  /* Backdrop under the ChatSidebar drawer. */
+  .geni-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+    z-index: 299;
+    animation: fadeIn 0.2s ease both;
+  }
+}

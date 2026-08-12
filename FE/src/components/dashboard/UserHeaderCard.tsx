@@ -189,13 +189,16 @@ export function UserHeaderCard({ profile, isLoading, onProfileUpdate }: UserHead
 
             {/* Profile completion indicator */}
             <Flex align="center" gap={8}>
-              <div style={{
-                width: 120,
-                height: 4,
-                background: 'rgba(255,255,255,0.08)',
-                borderRadius: 999,
-                overflow: 'hidden',
-              }}>
+              <div
+                className="profile-completion-bar"
+                style={{
+                  width: 120,
+                  height: 4,
+                  background: 'rgba(255,255,255,0.08)',
+                  borderRadius: 999,
+                  overflow: 'hidden',
+                }}
+              >
                 <div style={{
                   width: `${completion}%`,
                   height: '100%',

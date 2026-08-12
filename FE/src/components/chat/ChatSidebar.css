@@ -124,3 +124,25 @@
 .chat-sidebar__item:hover .chat-sidebar__item-menu-btn {
   opacity: 1;
 }
+
+/* ── Responsive: ≤ 960px → ChatSidebar becomes a slide-over drawer ───────
+   On desktop it lives in-flow beside the chat window. On mobile it would
+   eat the whole screen, so we turn it into an off-canvas overlay with a
+   backdrop (rendered by GeniPage).                                        */
+@media (max-width: 960px) {
+  .chat-sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(280px, 86vw) !important;
+    z-index: 300;
+    padding-top: 16px;
+    transform: translateX(-100%);
+    transition: transform 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+  }
+  .chat-sidebar.chat-sidebar--drawer-open {
+    transform: translateX(0);
+  }
+}

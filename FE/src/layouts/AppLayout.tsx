@@ -16,6 +16,7 @@ import {
   AudioOutlined,
   FileSearchOutlined,
   ScheduleOutlined,
+  MenuOutlined,
 } from "@ant-design/icons";
 import { listResumes } from "../services/resumeService";
 import { OnboardingModal } from "../components/OnboardingModal";
@@ -73,6 +74,27 @@ export function AppLayout() {
   const { signOut } = useClerk();
   const { getToken } = useAuth();
 
+  // Mobile drawer state. Below the 960px breakpoint the Sider becomes an
+  // off-canvas drawer; on desktop `isMobile` is false and these are inert.
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 960px)").matches,
+  );
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 960px)");
+    const sync = () => setIsMobile(mql.matches);
+    sync();
+    mql.addEventListener("change", sync);
+    return () => mql.removeEventListener("change", sync);
+  }, []);
+
+  // Close the drawer whenever the route changes (a nav item was tapped) so
+  // the user sees the page they just navigated to.
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [location.pathname]);
+
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [checked, setChecked] = useState(false);
 
@@ -97,6 +119,11 @@ export function AppLayout() {
   }, [getToken]);
 
   const siderWidth = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_WIDTH;
+  // On mobile the content always spans full width — the inline marginLeft
+  // is only applied on desktop. The CSS in AppLayout.css enforces
+  // margin-left:0 below 960px, but we also avoid setting it inline here so
+  // there's nothing to fight with `!important`.
+  const contentMargin = isMobile ? 0 : siderWidth;
 
   const initials =
     [user?.firstName, user?.lastName]
@@ -145,7 +172,7 @@ export function AppLayout() {
     <>
       <Layout className="app-shell">
         <Sider
-          className="app-sider"
+          className={`app-sider${isMobile && drawerOpen ? " app-sider--drawer-open" : ""}`}
           width={SIDEBAR_WIDTH}
           collapsedWidth={SIDEBAR_COLLAPSED}
           collapsed={collapsed}
@@ -208,6 +235,50 @@ export function AppLayout() {
           </div>
         </Sider>
 
+        {/* ── Mobile top bar (only visible ≤ 960px via CSS) ─────────────── */}
+        <div className="mobile-topbar" aria-hidden={!isMobile}>
+          <div className="mobile-topbar__left">
+            <button
+              className="mobile-topbar__hamburger"
+              onClick={() => setDrawerOpen((v) => !v)}
+              aria-label="Open navigation"
+              aria-expanded={drawerOpen}
+            >
+              <MenuOutlined />
+            </button>
+            <a
+              className="mobile-topbar__logo"
+              onClick={() => navigate("/dashboard")}
+              role="button"
+              style={{ cursor: "pointer" }}
+            >
+              <div className="sider-logo-icon">W</div>
+              <span className="mobile-topbar__logo-text">Work@X</span>
+            </a>
+          </div>
+          <div className="mobile-topbar__right">
+            <Tooltip title="Notifications">
+              <Button
+                type="text"
+                size="small"
+                icon={<BellOutlined />}
+                style={{ color: "var(--text-secondary)" }}
+                aria-label="Notifications"
+              />
+            </Tooltip>
+            <div className="mobile-topbar__avatar" aria-label={displayName}>
+              {initials}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Mobile drawer backdrop (only visible ≤ 960px via CSS) ─────── */}
+        <div
+          className={`mobile-backdrop${drawerOpen ? " mobile-backdrop--visible" : ""}`}
+          onClick={() => setDrawerOpen(false)}
+          aria-hidden={!isMobile}
+        />
+
         <button
           className="sider-collapse-btn"
           style={{ left: siderWidth - 11 }}
@@ -219,7 +290,7 @@ export function AppLayout() {
 
         <Content
           className="app-content-area"
-          style={{ marginLeft: siderWidth }}
+          style={{ marginLeft: contentMargin }}
         >
           <div className="app-content-inner">
             <Outlet />

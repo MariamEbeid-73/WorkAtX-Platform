@@ -133,6 +133,7 @@ function AnalysisLoadingState({
           transform: "translate(-50%,-50%)",
           pointerEvents: "none",
         }}
+        className="kg-loading-blob-lg"
       />
       <div
         style={{
@@ -147,6 +148,7 @@ function AnalysisLoadingState({
           pointerEvents: "none",
           animation: "float 6s ease-in-out infinite",
         }}
+        className="kg-loading-blob-sm"
       />
 
       <Flex
@@ -511,6 +513,7 @@ function DomainScoreCard({
 
   return (
     <div
+      className="kg-domain-card"
       style={{
         borderRadius: 20,
         padding: 24,
@@ -644,7 +647,7 @@ function SectionCard({
 }) {
   return (
     <div
-      className="animate-fade-in"
+      className="animate-fade-in kg-section-card"
       style={{
         animationDelay: `${delay}ms`,
         borderRadius: 20,
@@ -800,7 +803,7 @@ function AnalysisResultState({ data }: { data: AnalysisResult }) {
     <Flex vertical gap={24}>
       {/* ── Hero Card ─────────────────────────────────────────────────────── */}
       <div
-        className="animate-fade-in"
+        className="animate-fade-in kg-hero-card"
         style={{
           borderRadius: 24,
           padding: "32px 32px",
@@ -1442,6 +1445,7 @@ function AnalysisResultState({ data }: { data: AnalysisResult }) {
                         gap: 10,
                         marginBottom: 14,
                       }}
+                      className="kg-stats-3"
                     >
                       {[
                         { label: "Repos", value: gh.publicRepos },
@@ -1459,6 +1463,7 @@ function AnalysisResultState({ data }: { data: AnalysisResult }) {
                           }}
                         >
                           <Text
+                            className="kg-stat-value"
                             style={{
                               fontSize: 18,
                               fontWeight: 800,
@@ -1562,6 +1567,7 @@ function AnalysisResultState({ data }: { data: AnalysisResult }) {
                         gridTemplateColumns: "1fr 1fr",
                         gap: 10,
                       }}
+                      className="kg-stats-2"
                     >
                       {[
                         { label: "Connections", value: li.connectionsCount },
@@ -1578,6 +1584,7 @@ function AnalysisResultState({ data }: { data: AnalysisResult }) {
                           }}
                         >
                           <Text
+                            className="kg-stat-value"
                             style={{
                               fontSize: 18,
                               fontWeight: 800,

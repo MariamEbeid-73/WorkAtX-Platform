@@ -24,6 +24,7 @@ interface ChatSidebarProps {
   onRename: (sessionId: string, title: string) => void;
   onArchive: (sessionId: string) => void;
   onCollapse: () => void;
+  className?: string;
 }
 
 function formatTimestamp(iso: string | null): string {
@@ -78,6 +79,7 @@ export function ChatSidebar({
   onRename,
   onArchive,
   onCollapse,
+  className,
 }: ChatSidebarProps) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
@@ -106,7 +108,7 @@ export function ChatSidebar({
   };
 
   return (
-    <div className="chat-sidebar">
+    <div className={`chat-sidebar${className ? ` ${className}` : ''}`}>
       <Flex align="center" justify="space-between" className="chat-sidebar__header">
         <Text strong style={{ fontSize: 14 }}>
           Chats
