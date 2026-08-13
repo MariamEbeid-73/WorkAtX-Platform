@@ -129,8 +129,12 @@ export function useChat() {
     }, [getToken]);
 
     const loadMessages = useCallback(
-        async (sessionId: string) => {
-            setMessagesLoading(true);
+        async (sessionId: string, opts?: { background?: boolean }) => {
+            // A background refresh (after a job completes) must NOT flash the
+            // "Loading conversation…" spinner / hide the existing bubbles —
+            // it would wipe the visible chat on every AI reply. Only an
+            // initial load (mount restore, session switch) shows the spinner.
+            if (!opts?.background) setMessagesLoading(true);
             try {
                 const token = await getToken();
                 if (!token) throw new Error("Not authenticated.");
@@ -327,7 +331,7 @@ export function useChat() {
                 }));
 
                 if (!disposed && activeSessionRef.current === sessionId) {
-                    await loadMessages(sessionId);
+                    await loadMessages(sessionId, { background: true });
                     void refreshSessions();
                 }
             } catch (err) {
@@ -465,7 +469,7 @@ export function useChat() {
 
                 // Refresh UI
                 refreshSessions();
-                if (activeSessionRef.current) await loadMessages(activeSessionRef.current);
+                if (activeSessionRef.current) await loadMessages(activeSessionRef.current, { background: true });
             } catch (err) {
                 if (err instanceof DOMException && err.name === "AbortError") return;
                 setSendError(friendlyError(err));
@@ -607,7 +611,7 @@ export function useChat() {
 
                 // Re-fetch authoritative database transcript and refresh list.
                 if (activeSessionRef.current === sessionId) {
-                    await loadMessages(sessionId);
+                    await loadMessages(sessionId, { background: true });
                 }
                 refreshSessions();
             } catch (err) {
