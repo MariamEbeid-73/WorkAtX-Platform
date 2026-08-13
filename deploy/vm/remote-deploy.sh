@@ -157,17 +157,23 @@ capture_failure_diagnostics() {
 
 HEALTH_FAILURE_REASON=""
 
+wait_for_http() {
+  local url="$1" attempts="$2" delay_seconds="$3"
+  for _ in $(seq 1 "${attempts}"); do
+    if curl -fsS --max-time 5 "${url}" >/dev/null; then return 0; fi
+    sleep "${delay_seconds}"
+  done
+  return 1
+}
+
 health_check() {
   HEALTH_FAILURE_REASON=""
-  local healthy=0
-  for _ in $(seq 1 45); do
-    if [[ "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:5000/health || true)" == 200 ]]; then healthy=1; break; fi
-    sleep 2
-  done
-  if [[ "${healthy}" -ne 1 ]]; then HEALTH_FAILURE_REASON="Backend HTTP health check timed out"; return 1; fi
+  if ! wait_for_http http://127.0.0.1:5000/health 45 2; then HEALTH_FAILURE_REASON="Backend HTTP health check timed out"; return 1; fi
   if ! docker exec workx-redis redis-cli ping | grep -qx PONG; then HEALTH_FAILURE_REASON="Redis ping failed"; return 1; fi
   if ! curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null; then HEALTH_FAILURE_REASON="MinIO health check failed"; return 1; fi
-  if ! curl -fsS http://127.0.0.1:8080/ >/dev/null; then HEALTH_FAILURE_REASON="Frontend HTTP health check failed"; return 1; fi
+  # nginx needs a short startup window after Compose recreates the frontend.
+  # A one-shot probe races its entrypoint and can roll back a healthy release.
+  if ! wait_for_http http://127.0.0.1:8080/ 30 1; then HEALTH_FAILURE_REASON="Frontend HTTP health check timed out"; return 1; fi
   if ! docker inspect -f '{{.State.Running}}' workx-worker | grep -qx true; then HEALTH_FAILURE_REASON="Worker container is not running"; return 1; fi
   if docker inspect workx-ai-app >/dev/null 2>&1; then
     if ! docker exec workx-worker python3 -c "import urllib.request; assert urllib.request.urlopen('http://workx-ai-app:8000/health', timeout=5).status == 200"; then
