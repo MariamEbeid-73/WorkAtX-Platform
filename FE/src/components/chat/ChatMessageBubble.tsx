@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Avatar, Flex, Tag, Typography, Button, Tooltip } from 'antd';
 import {
@@ -41,7 +41,7 @@ interface ChatMessageBubbleProps {
     ) => Promise<void>;
 }
 
-export function ChatMessageBubble({
+function ChatMessageBubbleInner({
     message,
     userInitials,
     onResumeWithSelections,
@@ -181,3 +181,13 @@ export function ChatMessageBubble({
         </Flex>
     );
 }
+
+/**
+ * Memoized so unchanged rows skip re-rendering when the parent re-renders.
+ * Props are referentially stable: `userInitials` is a primitive string and
+ * `onResumeWithSelections` is `useCallback`-memoized in `GeniPage`. The
+ * `message` prop identity is preserved for unchanged messages by the merge
+ * in `useChat.loadMessages` (see chatMessageSignature), so memo's shallow
+ * compare short-circuits the row.
+ */
+export const ChatMessageBubble = memo(ChatMessageBubbleInner);

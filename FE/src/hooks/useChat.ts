@@ -19,6 +19,51 @@ interface RestoredPendingJob {
 
 const ACTIVE_CHAT_SESSION_KEY = "workx-active-chat-session";
 
+/**
+ * Serializes the few fields that actually affect rendering into a stable
+ * signature string. Used by `loadMessages` to reuse the *previous* message
+ * object reference for any row whose logical content hasn't changed — so a
+ * re-fetched transcript (which rebuilds every message object from scratch
+ * with new identities) doesn't blow away referential identity for the rows
+ * that didn't change. Combined with `React.memo(ChatMessageBubble)`, that
+ * means unchanged rows skip re-rendering on every AI reply.
+ */
+function chatMessageSignature(m: UiChatMessage): string {
+    return JSON.stringify({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        responseType: m.responseType,
+        jobId: m.jobId,
+        result: m.result,
+        createdAt: m.createdAt,
+        pending: m.pending,
+        pendingStage: m.pendingStage,
+        pendingProgress: m.pendingProgress,
+        failed: m.failed,
+        resultStatus: m.resultStatus,
+    });
+}
+
+/**
+ * Merges a freshly fetched transcript (`next`) into the current `prev`
+ * state, reusing the previous object reference for any message that is
+ * logically unchanged (same id + same signature). Synthetic optimistic /
+ * pending placeholders (`local-…`, `pending-…`, `failed-…`) simply drop
+ * out because the server transcript uses real ids for those rows. This
+ * keeps referential identity for stable rows so memoized consumers can
+ * short-circuit.
+ */
+function mergeTranscript(prev: UiChatMessage[], next: UiChatMessage[]): UiChatMessage[] {
+    if (prev.length === 0) return next;
+    const prevById = new Map(prev.map((m) => [m.id, m] as const));
+    return next.map((nm) => {
+        const pm = prevById.get(nm.id);
+        if (pm && chatMessageSignature(pm) === chatMessageSignature(nm)) return pm;
+        return nm;
+    });
+}
+
 function toUiMessage(m: {
     id: string;
     role: "user" | "assistant";
@@ -221,7 +266,7 @@ export function useChat() {
 
                 // Only apply if the user hasn't since navigated to a different session.
                 if (activeSessionRef.current === sessionId) {
-                    setMessages(restoredMessages);
+                    setMessages((prev) => mergeTranscript(prev, restoredMessages));
                     setRestoredPendingJobs(jobsToResume);
                 }
             } catch (err) {

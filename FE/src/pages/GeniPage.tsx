@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Flex, Typography, Input, Button, Tooltip, Alert, Avatar } from 'antd';
 import {
   SendOutlined,
@@ -105,6 +105,25 @@ export function GeniPage() {
   );
 
   const isEmptyState = !activeSessionId && messages.length === 0;
+
+  // Stable element array: rows whose `message` prop identity is unchanged
+  // (guaranteed by the merge in useChat.loadMessages) and whose props are
+  // referentially stable (userInitials is a primitive, handleResumeWithSelections
+  // is useCallback-memoized) keep their element identity too, so React skips
+  // reconciling them. ChatMessageBubble is itself memoized, so even if a row
+  // stays in the array it short-circuits at the component level.
+  const renderedMessages = useMemo(
+    () =>
+      messages.map((m) => (
+        <ChatMessageBubble
+          key={m.id}
+          message={m}
+          userInitials={initials}
+          onResumeWithSelections={handleResumeWithSelections}
+        />
+      )),
+    [messages, initials, handleResumeWithSelections],
+  );
 
   return (
     <div
@@ -226,15 +245,7 @@ export function GeniPage() {
           <div className="geni-chat-scroll">
             {messagesLoading && <Text type="secondary">Loading conversation…</Text>}
 
-            {!messagesLoading &&
-              messages.map((m) => (
-                <ChatMessageBubble
-                  key={m.id}
-                  message={m}
-                  userInitials={initials}
-                  onResumeWithSelections={handleResumeWithSelections}
-                />
-              ))}
+            {!messagesLoading && renderedMessages}
 
             <div ref={messagesEndRef} />
           </div>
