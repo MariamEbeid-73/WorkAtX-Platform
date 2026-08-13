@@ -32,6 +32,27 @@ function importanceBadgeClass(importance: string): string {
     return 'gap-card__badge--preferred';
 }
 
+function confidenceBadgeClass(confidence: string): string {
+    const c = (confidence || '').toLowerCase();
+    if (c === 'high') return 'gap-card__badge--high';
+    if (c === 'low') return 'gap-card__badge--low';
+    return 'gap-card__badge--moderate';
+}
+
+function depthBadgeClass(depth: string): string {
+    const d = (depth || '').toLowerCase();
+    if (d === 'deep') return 'gap-card__badge--high';
+    if (d === 'thin') return 'gap-card__badge--low';
+    return 'gap-card__badge--moderate';
+}
+
+const ROLE_INSIGHT_LABELS: Record<string, string> = {
+    what_this_place_is_like: 'The team',
+    what_they_value: 'What they value',
+    interview_shape: 'Interview process',
+    role_reality: 'Day to day',
+};
+
 export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCardProps) {
     const [copied, setCopied] = useState(false);
     const [selectedChoices, setSelectedChoices] = useState<TechChoiceSelections>({});
@@ -107,6 +128,14 @@ export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCard
     const matchedSkills = ga.matched ?? [];
     const strengths = ga.strengths ?? [];
     const weaknesses = ga.weaknesses ?? [];
+    const blocking = ga.blocking ?? [];
+    const leverage = ga.leverage ?? [];
+    const unaskedLeverage = ga.unasked_leverage ?? [];
+    const positioning = ga.positioning ?? [];
+    const roleInsight = ga.role_insight ?? {};
+    const roleInsightEntries = Object.entries(ROLE_INSIGHT_LABELS).filter(
+        ([key]) => typeof roleInsight[key] === 'string' && (roleInsight[key] as string).trim().length > 0,
+    );
 
     return (
         <div className="gap-card">
@@ -120,9 +149,18 @@ export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCard
                     format={(pct) => <span style={{ fontSize: 11 }}>{pct}%</span>}
                 />
                 <Flex vertical gap={2} flex={1} style={{ minWidth: 0 }}>
-                    <Text style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: 14 }}>
-                        Gap analysis complete
-                    </Text>
+                    <Flex align="center" gap={8}>
+                        <Text style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: 14 }}>
+                            Gap analysis complete
+                        </Text>
+                        {ga.evidence_confidence && (
+                            <Tooltip title="How confident the analysis is in its own verdicts, based on how much evidence backed them">
+                                <span className={`gap-card__badge ${confidenceBadgeClass(ga.evidence_confidence)}`}>
+                                    {ga.evidence_confidence} confidence
+                                </span>
+                            </Tooltip>
+                        )}
+                    </Flex>
                     <Text style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
                         {matchedSkills.length} matched · {ga.missing.length} gaps found
                         {perJobMatchScores.length > 0 ? ` · ${ga.jobs_analyzed} jobs analyzed` : ''}
@@ -177,9 +215,22 @@ export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCard
                                 className="gap-card__job-row"
                             >
                                 <Flex vertical flex={1} style={{ minWidth: 0 }}>
-                                    <Text ellipsis style={{ fontSize: 13, fontWeight: 500 }}>
-                                        {job.role}
-                                    </Text>
+                                    {job.job_url ? (
+                                        <a
+                                            href={job.job_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{ fontSize: 13, fontWeight: 500 }}
+                                        >
+                                            <Text ellipsis style={{ fontSize: 13, fontWeight: 500 }}>
+                                                {job.job_title || job.role}
+                                            </Text>
+                                        </a>
+                                    ) : (
+                                        <Text ellipsis style={{ fontSize: 13, fontWeight: 500 }}>
+                                            {job.job_title || job.role}
+                                        </Text>
+                                    )}
                                     <Text type="secondary" style={{ fontSize: 12 }}>
                                         {job.company}
                                     </Text>
@@ -256,6 +307,46 @@ export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCard
                 </div>
             )}
 
+            {/* ── Blocking barriers ─────────────────────────────────────── */}
+            {blocking.length > 0 && (
+                <div className="gap-card__section">
+                    <Alert
+                        type="error"
+                        showIcon
+                        message={`${blocking.length} hard requirement${blocking.length === 1 ? '' : 's'} you don't currently meet`}
+                        className="gap-card__banner"
+                    />
+                    <div className="gap-card__missing-table">
+                        {blocking.map((b, i) => (
+                            <div key={`${b.label}-${i}`} className="gap-card__missing-row gap-card__missing-row--blocking">
+                                <Flex vertical gap={4} style={{ minWidth: 0, flex: 1 }}>
+                                    <Flex align="center" gap={8}>
+                                        <span className="gap-card__badge gap-card__badge--blocking">{b.label}</span>
+                                        {b.of > 0 && (
+                                            <Tooltip title={Array.isArray(b.jobs) ? b.jobs.join(', ') : ''}>
+                                                <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                                                    {b.required_by}/{b.of} jobs
+                                                </Text>
+                                            </Tooltip>
+                                        )}
+                                    </Flex>
+                                    {b.evidence && (
+                                        <Text type="secondary" style={{ fontSize: 12.5 }}>
+                                            {b.evidence}
+                                        </Text>
+                                    )}
+                                    {b.workaround && (
+                                        <Text style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                                            Possible workaround: {b.workaround}
+                                        </Text>
+                                    )}
+                                </Flex>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* ── Skill Gaps Quick Overview ─────────────────────────────── */}
             {sortedMissing.length > 0 && (
                 <div className="gap-card__section">
@@ -277,6 +368,9 @@ export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCard
                                 <span className={`gap-card__badge ${importanceBadgeClass(m.importance)}`}>
                                     {m.importance}
                                 </span>
+                                {m.kind === 'depth' && (
+                                    <span className="gap-card__badge gap-card__badge--depth">needs more depth</span>
+                                )}
                                 <Tooltip title={Array.isArray(m.jobs) ? m.jobs.join(', ') : ''}>
                                     <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
                                         {m.required_by}/{m.of} jobs
@@ -285,6 +379,98 @@ export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCard
                             </div>
                         ))}
                     </div>
+                </div>
+            )}
+
+            {/* ── Leverage ──────────────────────────────────────────────── */}
+            {leverage.length > 0 && (
+                <div className="gap-card__section">
+                    <Title level={5} className="gap-card__section-title">
+                        Your strongest angles
+                    </Title>
+                    <Flex vertical gap={8}>
+                        {leverage.map((l, i) => (
+                            <div key={`${l.label}-${i}`} className="gap-card__leverage-row">
+                                <Flex align="center" gap={8} wrap>
+                                    <Text style={{ fontSize: 13, fontWeight: 500 }}>{l.label}</Text>
+                                    {typeof l.demand_rank === 'number' && (
+                                        <span className="gap-card__badge gap-card__badge--moderate">
+                                            their #{l.demand_rank} ask
+                                        </span>
+                                    )}
+                                    <span className={`gap-card__badge ${depthBadgeClass(l.depth)}`}>{l.depth}</span>
+                                </Flex>
+                                {l.evidence?.length > 0 && (
+                                    <ul className="gap-card__list">
+                                        {l.evidence.map((e, j) => (
+                                            <li key={j}>{e}</li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        ))}
+                    </Flex>
+                </div>
+            )}
+
+            {/* ── Unasked leverage ──────────────────────────────────────── */}
+            {unaskedLeverage.length > 0 && (
+                <div className="gap-card__section">
+                    <Title level={5} className="gap-card__section-title">
+                        Extra strengths worth mentioning
+                    </Title>
+                    <Flex vertical gap={8}>
+                        {unaskedLeverage.map((u, i) => (
+                            <div key={`${u.label}-${i}`} className="gap-card__leverage-row">
+                                <Text style={{ fontSize: 13, fontWeight: 500 }}>{u.label}</Text>
+                                <Text type="secondary" style={{ fontSize: 12.5 }}>
+                                    {u.why_it_matters}
+                                </Text>
+                                {u.evidence?.length > 0 && (
+                                    <ul className="gap-card__list">
+                                        {u.evidence.map((e, j) => (
+                                            <li key={j}>{e}</li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        ))}
+                    </Flex>
+                </div>
+            )}
+
+            {/* ── Positioning ───────────────────────────────────────────── */}
+            {positioning.length > 0 && (
+                <div className="gap-card__section">
+                    <Title level={5} className="gap-card__section-title">
+                        How to position yourself
+                    </Title>
+                    <ul className="gap-card__list">
+                        {positioning.map((p, i) => (
+                            <li key={i}>{p}</li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
+            {/* ── Role insight ──────────────────────────────────────────── */}
+            {roleInsightEntries.length > 0 && (
+                <div className="gap-card__section">
+                    <Title level={5} className="gap-card__section-title">
+                        What this place is like
+                    </Title>
+                    <Flex vertical gap={8}>
+                        {roleInsightEntries.map(([key, label]) => (
+                            <div key={key} className="gap-card__insight-row">
+                                <Text style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)' }}>
+                                    {label}
+                                </Text>
+                                <Paragraph style={{ margin: 0, fontSize: 13 }}>
+                                    {roleInsight[key] as string}
+                                </Paragraph>
+                            </div>
+                        ))}
+                    </Flex>
                 </div>
             )}
 

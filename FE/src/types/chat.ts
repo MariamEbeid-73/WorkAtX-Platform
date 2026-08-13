@@ -24,6 +24,39 @@ export interface TechChoiceCategory {
 
 export type TechChoiceSelections = Record<string, string>;
 
+export interface GapAnalysisGap {
+    label: string;
+    kind: 'blocking' | 'developable' | 'depth';
+    required_by: number;
+    of: number;
+    jobs: string[];
+    evidence: string;
+    workaround?: string | null;
+}
+
+export interface GapAnalysisLeverage {
+    label: string;
+    demand_rank?: number | null;
+    required_by: number;
+    of: number;
+    depth: 'deep' | 'solid' | 'thin';
+    evidence: string[];
+}
+
+export interface GapAnalysisUnaskedLeverage {
+    label: string;
+    why_it_matters: string;
+    evidence: string[];
+}
+
+export interface GapAnalysisRoleInsight {
+    what_this_place_is_like?: string;
+    what_they_value?: string;
+    interview_shape?: string;
+    role_reality?: string;
+    [key: string]: unknown;
+}
+
 export interface GapAnalysisResult {
     gap_analysis: {
         per_job_match_scores: Array<{
@@ -32,6 +65,9 @@ export interface GapAnalysisResult {
             role: string;
             match_score: number;
             match_level: string;
+            job_id?: string;
+            job_title?: string;
+            job_url?: string;
         }>;
         skill_coverage_across_all_jobs: number;
         matched: string[];
@@ -42,6 +78,7 @@ export interface GapAnalysisResult {
             of: number;
             jobs: string[];
             badge_color?: string;
+            kind?: 'developable' | 'depth';
         }>;
         strengths: string[];
         weaknesses: string[];
@@ -51,6 +88,13 @@ export interface GapAnalysisResult {
         jobs_analyzed: number;
         jobs_with_errors?: string[];
         is_degraded?: boolean;
+        blocking?: GapAnalysisGap[];
+        depth_gaps?: GapAnalysisGap[];
+        leverage?: GapAnalysisLeverage[];
+        unasked_leverage?: GapAnalysisUnaskedLeverage[];
+        positioning?: string[];
+        role_insight?: GapAnalysisRoleInsight;
+        evidence_confidence?: 'high' | 'medium' | 'low';
     };
     user_report: string;
     tech_choices: TechChoiceCategory[];

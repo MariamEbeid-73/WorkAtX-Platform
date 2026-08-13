@@ -164,7 +164,62 @@ Never leave a job stuck in `processing` — always resolve to `completed` or `fa
 | `gap_analysis` | a full gap-analysis / study-plan **object** |
 | `analysis1` | the combined profile-analysis **object** |
 
-One column holds either shape — there is no per-job-type result schema.
+One column holds either shape — there is no per-job-type result schema. BE
+never deserializes into a per-field model for any of these; it stores and
+relays the AI service's JSON verbatim (`JsonElement`/raw string), so new
+fields the AI service adds require no BE code change — only the table below
+needs to stay current for FE/Worker readers.
+
+> **Note on job typing (as of 2026-08):** the escalation model described
+> elsewhere in this doc (`chat` job mutates its `JobType` to `gap_analysis`)
+> is superseded in the current code. Every chat turn is created as
+> `JobType.Chat`; the AI service alone decides per-turn, via a
+> `responseType` field in its response (`normal_text` | `gap_analysis` |
+> `study_plan`), whether that turn *is* a gap analysis or study plan.
+> `JobType.GapAnalysis` survives only as a legacy value on rows created
+> before this change and is rejected for new jobs by the worker
+> (`Worker/tasks/process_job.py`). Results now live in dedicated
+> `UserGapAnalyses`/`UserStudyPlans` tables (keyed by `UserId`/`SessionId`/
+> `JobId`), not only on `Jobs.ResultJson`. The rest of this document has not
+> been fully updated to match; treat any text below that assumes the
+> `chat → gap_analysis` escalation as historical unless you've confirmed it
+> against `BE/Controllers/InternalAiController.cs` and `Worker/tasks/chat_job.py`.
+
+#### `gap_analysis` object (Node 8, `Ai-career-service`)
+
+The AI service's response envelope for a gap-analysis turn is
+`{"responseType": "gap_analysis", "response": {"gap_analysis": {...}, "user_report": "<markdown>", "tech_choices": [...], "awaiting_user_input": true}}`.
+BE stores the inner `response` object verbatim as `ResultJson`. The
+`gap_analysis` object's fields, current as of the 2026-08 Node 8 redesign
+(see `Ai-career-service/app/graph/nodes/node8/models.py::GapAnalysisResult`
+for the source of truth):
+
+| Field | Type | Notes |
+|---|---|---|
+| `per_job_match_scores` | array | one entry per posting: `role`, `company`, `match_score`, `match_level`, plus `job_id`/`job_title`/`job_url` |
+| `skill_coverage_across_all_jobs` | int (0–100) | demand-weighted coverage score |
+| `matched` | string[] | requirement labels judged met |
+| `missing` | array | non-blocking gaps: `skill`, `importance`, `required_by`, `of`, `jobs`, `badge_color`, `kind` (`developable`\|`depth`) |
+| `strengths` | string[] | formatted display lines, derived from `leverage` |
+| `weaknesses` | string[] | formatted display lines, derived from `blocking` + `missing` |
+| `summary` | string | free-text summary |
+| `company_info` | string | passthrough |
+| `urgency_note` | string | free-text |
+| `jobs_analyzed` | int | postings actually analyzed |
+| `jobs_with_errors` | string[] | postings that failed to parse |
+| `is_degraded` | bool | true only for the no-postings company-info fallback |
+| `blocking` *(new)* | array | hard eligibility barriers (visa, years-of-experience floor, etc.): `label`, `kind`, `required_by`, `of`, `jobs`, `evidence`, `workaround?` — never appears in `missing` |
+| `depth_gaps` *(new)* | array | subset of gaps where the candidate has the skill but not enough depth; same shape as `blocking` entries |
+| `leverage` *(new)* | array | structured form of `strengths`: `label`, `demand_rank`, `required_by`, `of`, `depth` (`deep`\|`solid`\|`thin`), `evidence[]` |
+| `unasked_leverage` *(new)* | array | capabilities no posting asked for but that matter given company/role context: `label`, `why_it_matters`, `evidence[]` |
+| `positioning` *(new)* | string[] | concrete "lead with this" lines |
+| `role_insight` *(new)* | object | passthrough of cached role context: `what_this_place_is_like`, `what_they_value`, `interview_shape`, `role_reality` |
+| `evidence_confidence` *(new)* | `"high"\|"medium"\|"low"` | self-reported confidence; forced `"low"` on the company-info fallback |
+
+The 12 non-`(new)` fields keep their original name and type — this was an
+additive-only change. FE's typed mirror of this object lives in
+`FE/src/types/chat.ts` (`GapAnalysisResult`); keep it in sync with this
+table when the AI service's schema changes again.
 
 ---
 

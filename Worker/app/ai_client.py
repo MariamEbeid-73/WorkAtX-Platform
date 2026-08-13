@@ -42,67 +42,157 @@ def call_process_api(
         msg_lower = message.lower()
 
         # Trigger 1: Gap Analysis with Radio Buttons (tech_choices)
+        #
+        # Shape matches the real AI service's /api/v1/ai/process contract:
+        # {responseType, response: {gap_analysis, user_report, tech_choices,
+        # awaiting_user_input}} -- NOT flat. gap_analysis carries the full
+        # field set Node 8 produces, including the additive fields
+        # (blocking, depth_gaps, leverage, unasked_leverage, positioning,
+        # role_insight, evidence_confidence) so local MOCK_AI dev exercises
+        # the same shape the frontend actually parses.
         if "gap" in msg_lower or "senior" in msg_lower:
             return {
                 "responseType": "gap_analysis",
-                "summary": "Strong C# background, missing container orchestration.",
-                "per_job_match_scores": [
-                    {
-                        "role_id": "job-101",
-                        "role": "Principal .NET Architect",
-                        "company": "Tech Corp",
-                        "match_level": "High Match",
-                        "match_score": 75,
-                    },
-                ],
-                "skill_coverage_across_all_jobs": 75,
-                "jobs_analyzed": 1,
-                "matched": ["C#", ".NET", "SQL Server"],
-                "missing_skills": [
-                    {"name": "System Architecture", "importance": "High"},
-                    {"name": "Docker & Kubernetes", "importance": "Medium"}
-                ],
-                "recommendations": [
-                    "Build end-to-end microservices with Docker Compose",
-                    "Learn Clean Architecture and Repository Patterns"
-                ],
-                "awaiting_user_input": True,
-                "tech_choices": [
-                    {
-                        "category": "Containerization",
-                        "options": [
-                            {"id": "docker", "label": "Docker", "description": "Industry standard, huge ecosystem"},
-                            {"id": "podman", "label": "Podman", "description": "Daemonless, rootless alternative"},
+                "response": {
+                    "gap_analysis": {
+                        "per_job_match_scores": [
+                            {
+                                "role_id": "job-101",
+                                "company": "Tech Corp",
+                                "role": "Principal .NET Architect",
+                                "match_score": 75,
+                                "match_level": "High",
+                                "job_id": "job-101",
+                                "job_title": "Principal .NET Architect",
+                                "job_url": "https://example.com/jobs/job-101",
+                            },
                         ],
-                    },
-                    {
-                        "category": "Cloud Platform",
-                        "options": [
-                            {"id": "aws", "label": "AWS", "description": "Broadest service catalog"},
-                            {"id": "azure", "label": "Azure", "description": "Strong .NET/enterprise integration"},
+                        "skill_coverage_across_all_jobs": 75,
+                        "matched": ["C#", ".NET", "SQL Server"],
+                        "missing": [
+                            {
+                                "skill": "System Architecture",
+                                "importance": "required",
+                                "required_by": 1,
+                                "of": 1,
+                                "jobs": ["job-101"],
+                                "badge_color": "red",
+                                "kind": "developable",
+                            },
+                            {
+                                "skill": "Docker & Kubernetes",
+                                "importance": "preferred",
+                                "required_by": 1,
+                                "of": 1,
+                                "jobs": ["job-101"],
+                                "badge_color": "yellow",
+                                "kind": "developable",
+                            },
                         ],
+                        "strengths": [
+                            "C# — their #1 requirement (1/1 postings); 4 yrs across 2 roles, 3 shipped services",
+                        ],
+                        "weaknesses": [
+                            "System Architecture — required by 1 of 1 postings",
+                            "Docker & Kubernetes — preferred, 1 of 1 postings",
+                        ],
+                        "summary": "Strong C# background, missing container orchestration.",
+                        "company_info": "",
+                        "urgency_note": "",
+                        "jobs_analyzed": 1,
+                        "jobs_with_errors": [],
+                        "is_degraded": False,
+                        "blocking": [],
+                        "depth_gaps": [],
+                        "leverage": [
+                            {
+                                "label": "C#",
+                                "demand_rank": 1,
+                                "required_by": 1,
+                                "of": 1,
+                                "depth": "deep",
+                                "evidence": ["4 yrs across 2 roles, 3 shipped services"],
+                            },
+                        ],
+                        "unasked_leverage": [
+                            {
+                                "label": "SQL Server performance tuning",
+                                "why_it_matters": "Tech Corp's stack leans heavily on SQL Server; this wasn't asked for but is a differentiator.",
+                                "evidence": ["Tuned slow queries on a 200GB production DB"],
+                            },
+                        ],
+                        "positioning": [
+                            "Lead with your SQL Server depth — it's not in the posting but it's exactly what a .NET shop like this one values.",
+                        ],
+                        "role_insight": {
+                            "what_this_place_is_like": "Small platform team, ships weekly.",
+                            "what_they_value": "Ownership and pragmatic architecture over process.",
+                            "interview_shape": "System design + take-home.",
+                            "role_reality": "Expect to touch infra as much as application code.",
+                        },
+                        "evidence_confidence": "high",
                     },
-                ],
+                    "user_report": "## Your fit for Principal .NET Architect at Tech Corp\n\nStrong C# background, missing container orchestration.",
+                    "tech_choices": [
+                        {
+                            "category": "Containerization",
+                            "options": [
+                                {"id": "docker", "label": "Docker", "description": "Industry standard, huge ecosystem"},
+                                {"id": "podman", "label": "Podman", "description": "Daemonless, rootless alternative"},
+                            ],
+                        },
+                        {
+                            "category": "Cloud Platform",
+                            "options": [
+                                {"id": "aws", "label": "AWS", "description": "Broadest service catalog"},
+                                {"id": "azure", "label": "Azure", "description": "Strong .NET/enterprise integration"},
+                            ],
+                        },
+                    ],
+                    "awaiting_user_input": True,
+                },
             }
 
         # Trigger 2: Gap Analysis Open-Ended Question (tech_choices = [])
         if "confirm" in msg_lower or "ready" in msg_lower:
             return {
                 "responseType": "gap_analysis",
-                "summary": "Gap analysis complete. Ready to build your customized learning path.",
-                "per_job_match_scores": [],
-                "skill_coverage_across_all_jobs": 80,
-                "jobs_analyzed": 1,
-                "matched": ["C#", "ASP.NET Core"],
-                "missing_skills": [
-                    {"name": "Microservices", "importance": "High"}
-                ],
-                "recommendations": [
-                    "Focus on domain-driven design and asynchronous queues."
-                ],
-                "awaiting_user_input": True,
-                "tech_choices": [],
-                "user_report": "Are you ready for Geni to generate your weekly study plan?"
+                "response": {
+                    "gap_analysis": {
+                        "per_job_match_scores": [],
+                        "skill_coverage_across_all_jobs": 80,
+                        "matched": ["C#", "ASP.NET Core"],
+                        "missing": [
+                            {
+                                "skill": "Microservices",
+                                "importance": "required",
+                                "required_by": 1,
+                                "of": 1,
+                                "jobs": [],
+                                "badge_color": "red",
+                                "kind": "developable",
+                            },
+                        ],
+                        "strengths": [],
+                        "weaknesses": ["Microservices — required by 1 of 1 postings"],
+                        "summary": "Gap analysis complete. Ready to build your customized learning path.",
+                        "company_info": "",
+                        "urgency_note": "",
+                        "jobs_analyzed": 1,
+                        "jobs_with_errors": [],
+                        "is_degraded": False,
+                        "blocking": [],
+                        "depth_gaps": [],
+                        "leverage": [],
+                        "unasked_leverage": [],
+                        "positioning": [],
+                        "role_insight": {},
+                        "evidence_confidence": "medium",
+                    },
+                    "user_report": "Are you ready for Geni to generate your weekly study plan?",
+                    "tech_choices": [],
+                    "awaiting_user_input": True,
+                },
             }
 
         # Trigger 3: Study Plan
