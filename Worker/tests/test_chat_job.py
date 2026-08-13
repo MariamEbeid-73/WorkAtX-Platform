@@ -45,6 +45,18 @@ def test_missing_message_fails_before_http_request(monkeypatch):
     post_request.assert_not_called()
 
 
+def test_process_api_uses_the_long_cold_research_timeout(monkeypatch):
+    monkeypatch.setenv("MOCK_AI", "false")
+    response = MagicMock(ok=True, content=b"{}")
+    response.json.return_value = {"responseType": "normal_text", "reply": "Done"}
+
+    with patch("app.ai_client.requests.post", return_value=response) as post_request:
+        ai_client.call_process_api(user_id="user-1", job_id="job-1", message="hi")
+
+    assert post_request.call_args.kwargs["timeout"] == ai_client.AI_PROCESS_TIMEOUT_SECONDS
+    assert post_request.call_args.kwargs["timeout"] >= 30 * 60
+
+
 def test_malformed_study_plan_is_not_submitted():
     job_payload = {
         "payload": {

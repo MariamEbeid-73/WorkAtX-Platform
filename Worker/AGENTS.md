@@ -28,7 +28,7 @@ pytest tests/ -v
 3. Route by `jobType`: `chat` → `handle_chat`, `analysis1` → `handle_analysis_1`
 4. POST result back via `/api/internal/ai/jobs/{jobId}/result` (`completed` + `resultJson`, or `failed` + `error`)
 
-Retry policy: `max_retries=3`, exponential backoff `5 * 2^retries`, `soft_time_limit=330`/`time_limit=360` (raised from 120/130 — must exceed ai_client's own 300s timeout, or Celery kills a cold gap-analysis job before the AI service's HTTP client even times out). 4xx from BE is fatal (no retry); 5xx/network/timeout retries then dead-letters. Never leave a job stuck in `processing` — `_safe_submit_failed_status` always resolves terminal failures.
+Retry policy: `max_retries=3`, exponential backoff `5 * 2^retries`, `soft_time_limit=1860`/`time_limit=1920` (derived from ai_client's configurable 1800s default). 4xx from BE is fatal; 5xx/connect failures retry then dead-letter. A read timeout is terminal because the AI server may still be executing the accepted request, so retrying would duplicate the same job. Never leave a job stuck in `processing` — `_safe_submit_failed_status` always resolves terminal failures.
 
 ## Modules
 

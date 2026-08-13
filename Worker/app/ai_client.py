@@ -14,6 +14,14 @@ AI_SERVICE_BASE_URL = os.getenv("AI_SERVICE_BASE_URL", "http://host.docker.inter
 AI_SERVICE_TOKEN = os.getenv("SERVICE_AUTH_TOKEN", "dev-service-token")
 AI_SERVICE_HEADERS = {"X-Service-Token": AI_SERVICE_TOKEN}
 
+# A cold role research run can legitimately spend more than ten minutes
+# scraping, structuring, embedding, and assessing postings. Keep this well
+# above that observed runtime so the worker does not abandon a healthy AI
+# request and start a duplicate execution for the same job.
+AI_PROCESS_TIMEOUT_SECONDS = int(os.getenv("AI_PROCESS_TIMEOUT_SECONDS", "1800"))
+if AI_PROCESS_TIMEOUT_SECONDS <= 0:
+    raise RuntimeError("AI_PROCESS_TIMEOUT_SECONDS must be a positive integer")
+
 
 def _mock_ai_enabled() -> bool:
     return os.getenv("MOCK_AI", "true").lower() == "true"
@@ -25,7 +33,7 @@ def call_process_api(
     session_id: str = None,
     message: str = None,
     context_summary: str = None,
-    timeout: int = 300,
+    timeout: int = AI_PROCESS_TIMEOUT_SECONDS,
 ) -> dict:
     if not isinstance(message, str) or not message.strip():
         raise ValueError(f"call_process_api requires 'message' (job_id={job_id})")

@@ -23,10 +23,11 @@ export function getJobResult(
 }
 
 const POLL_INTERVAL_MS = 1500;
-// Must exceed the worker's Celery time_limit (360s, Worker/tasks/process_job.py)
-// or the UI gives up before the worker itself does on a cold gap-analysis
-// scrape (real scrapes routinely run 1-4 minutes).
-const POLL_TIMEOUT_MS = 370_000;
+// A cold role scrape can run for more than ten minutes, and transient
+// connection failures can still consume multiple worker attempts. Keep the
+// browser resumable for the full retry envelope instead of timing out shortly
+// before a valid result is persisted.
+const POLL_TIMEOUT_MS = 90 * 60 * 1000;
 
 function toJobStatusUpdate(status: JobStatusDto): JobStatusUpdate {
   return {
@@ -95,14 +96,22 @@ export async function waitForJobCompletion(
     let settled = false;
     let unsubscribe: (() => void) | null = null;
     let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    let pollController: AbortController | null = null;
+    let pollingStarted = false;
 
-    const finish = (fn: () => void) => {
+    function abortWait() {
+      finish(() => reject(new DOMException("Polling aborted", "AbortError")));
+    }
+
+    function finish(fn: () => void) {
       if (settled) return;
       settled = true;
       if (fallbackTimer) clearTimeout(fallbackTimer);
       unsubscribe?.();
+      pollController?.abort();
+      opts.signal?.removeEventListener("abort", abortWait);
       fn();
-    };
+    }
 
     const reconcileStatus = (status: JobStatusDto) => {
       opts.onProgress?.(toJobStatusUpdate(status));
@@ -153,20 +162,25 @@ export async function waitForJobCompletion(
       });
 
     fallbackTimer = setTimeout(() => {
-      finish(() => {
-        pollJobUntilDone(token, jobId, {
-          signal: opts.signal,
-          onProgress: opts.onProgress,
-        }).then(
-          resolve,
-          reject,
-        );
-      });
+      if (settled || pollingStarted) return;
+      pollingStarted = true;
+      pollController = new AbortController();
+      pollJobUntilDone(token, jobId, {
+        signal: pollController.signal,
+        onProgress: opts.onProgress,
+      }).then(
+        (status) => finish(() => resolve(status)),
+        (error) => {
+          if (settled && error instanceof DOMException && error.name === "AbortError") return;
+          finish(() => reject(error));
+        },
+      );
     }, SOCKET_FALLBACK_MS);
 
-    opts.signal?.addEventListener("abort", () => {
-      if (fallbackTimer) clearTimeout(fallbackTimer);
-      finish(() => reject(new DOMException("Polling aborted", "AbortError")));
-    });
+    if (opts.signal?.aborted) {
+      abortWait();
+      return;
+    }
+    opts.signal?.addEventListener("abort", abortWait, { once: true });
   });
 }

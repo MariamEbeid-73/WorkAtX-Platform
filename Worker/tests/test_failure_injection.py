@@ -12,7 +12,13 @@ import requests
 import pytest
 from unittest.mock import patch, MagicMock
 
-from tasks.process_job import _process_job_impl as process_job_impl
+from app.ai_client import AI_PROCESS_TIMEOUT_SECONDS
+from tasks.process_job import (
+    PROCESS_JOB_SOFT_TIME_LIMIT_SECONDS,
+    PROCESS_JOB_TIME_LIMIT_SECONDS,
+    _process_job_impl as process_job_impl,
+    process_job,
+)
 
 
 class FakeRequest:
@@ -91,6 +97,14 @@ def test_ai_unavailable_dead_letters_after_retries_exhausted():
 # Scenario 2: AI service slow/hanging (timeout)
 # ---------------------------------------------------------------------------
 
+def test_timeout_envelope_allows_long_cold_research_runs():
+    assert AI_PROCESS_TIMEOUT_SECONDS >= 30 * 60
+    assert PROCESS_JOB_SOFT_TIME_LIMIT_SECONDS > AI_PROCESS_TIMEOUT_SECONDS
+    assert PROCESS_JOB_TIME_LIMIT_SECONDS > PROCESS_JOB_SOFT_TIME_LIMIT_SECONDS
+    assert process_job.soft_time_limit == PROCESS_JOB_SOFT_TIME_LIMIT_SECONDS
+    assert process_job.time_limit == PROCESS_JOB_TIME_LIMIT_SECONDS
+
+
 def test_ai_hanging_times_out_and_retries():
     job_id = "job-ai-hangs"
     job_data = {"jobType": "chat", "payload": {"userId": "u1", "message": "hi"}}
@@ -104,6 +118,27 @@ def test_ai_hanging_times_out_and_retries():
             process_job_impl(task, jobId=job_id)
 
         assert isinstance(task.retry_calls[0]["exc"], requests.exceptions.Timeout)
+
+
+def test_ai_read_timeout_fails_once_without_duplicate_retry():
+    job_id = "job-ai-read-timeout"
+    job_data = {"jobType": "chat", "payload": {"userId": "u1", "message": "hi"}}
+
+    with patch("tasks.process_job.backend_client.get_job_details", return_value=job_data), \
+         patch("tasks.process_job.backend_client.update_job_status"), \
+         patch("tasks.process_job.backend_client.submit_job_result") as mock_submit_result, \
+         patch(
+             "app.ai_client.requests.post",
+             side_effect=requests.exceptions.ReadTimeout("AI request is still running"),
+         ):
+
+        task = FakeTask(retries=0, max_retries=3)
+        result = process_job_impl(task, jobId=job_id)
+
+        assert result["status"] == "failed"
+        assert task.retry_calls == []
+        mock_submit_result.assert_called_once()
+        assert mock_submit_result.call_args.kwargs["status"] == "failed"
 
 
 # ---------------------------------------------------------------------------

@@ -146,6 +146,7 @@ services:
       CELERY_TASK: "${CELERY_TASK:-worker.tasks.process_job}"
       CELERY_QUEUE: "${CELERY_QUEUE:-celery}"
       SERVICE_AUTH_TOKEN: "${SERVICE_AUTH_TOKEN:?SERVICE_AUTH_TOKEN is required}"
+      AI_PROCESS_TIMEOUT_SECONDS: "${AI_PROCESS_TIMEOUT_SECONDS:-1800}"
       MOCK_AI: "${MOCK_AI:-false}"
       MOCK_AI_ASYNC_GAP: "${MOCK_AI_ASYNC_GAP:-false}"
     depends_on:
@@ -166,4 +167,3 @@ services:
 volumes:
   workx-db-data:
   workx-minio-data:
-

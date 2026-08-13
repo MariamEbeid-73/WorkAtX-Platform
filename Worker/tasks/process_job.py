@@ -2,6 +2,7 @@ import logging
 import requests
 from celery_app import app
 from app import backend_client
+from app.ai_client import AI_PROCESS_TIMEOUT_SECONDS
 from tasks.chat_job import handle_chat
 from tasks.analysis1_job import handle_analysis_1
 
@@ -13,17 +14,22 @@ JOB_TYPE_ANALYSIS_1 = "analysis1"
 STATUS_PROCESSING = "processing"
 STATUS_FAILED = "failed"
 
+# Leave enough time after the AI response for validation and the backend
+# result write. These limits are intentionally derived from the HTTP timeout
+# so one cannot be raised without keeping the complete attempt viable.
+PROCESS_JOB_SOFT_TIME_LIMIT_SECONDS = AI_PROCESS_TIMEOUT_SECONDS + 60
+PROCESS_JOB_TIME_LIMIT_SECONDS = AI_PROCESS_TIMEOUT_SECONDS + 120
+
 
 @app.task(
     name="worker.tasks.process_job",
     bind=True,
     max_retries=3,
-    # Must exceed ai_client's own timeout (300s, see app/ai_client.py) or
+    # Must exceed ai_client's own timeout (see app/ai_client.py) or
     # Celery kills the task mid-request before the AI service's own HTTP
-    # client even times out — a cold gap-analysis scrape routinely takes
-    # several minutes end to end.
-    soft_time_limit=330,
-    time_limit=360
+    # client times out. A cold role scrape can take more than ten minutes.
+    soft_time_limit=PROCESS_JOB_SOFT_TIME_LIMIT_SECONDS,
+    time_limit=PROCESS_JOB_TIME_LIMIT_SECONDS,
 )
 def process_job(self, jobId: str = None, **kwargs):
     return _process_job_impl(self, jobId=jobId, **kwargs)
@@ -50,6 +56,19 @@ def _process_job_impl(self, jobId: str = None, **kwargs):
             return handle_analysis_1(self, job_id, job_data)
         else:
             raise NotImplementedError(f"Unsupported jobType: '{job_type}'")
+
+    except requests.exceptions.ReadTimeout as timeout_err:
+        # A read timeout means the server accepted the request and may still
+        # be executing it. Retrying here creates concurrent graph runs for the
+        # same job, which is exactly what happened during the Microsoft SWE
+        # request. After the deliberately generous timeout, fail once and let
+        # the user explicitly retry with a new job instead.
+        logger.error(
+            f"[Job Dispatcher] [JobId={job_id}] AI request exceeded "
+            f"{AI_PROCESS_TIMEOUT_SECONDS}s; not retrying a possibly active request: {timeout_err}"
+        )
+        _safe_submit_failed_status(job_id, str(timeout_err))
+        return {"jobId": job_id, "status": STATUS_FAILED, "error": str(timeout_err)}
 
     except requests.exceptions.HTTPError as http_err:
         status_code = http_err.response.status_code if http_err.response is not None else 500
