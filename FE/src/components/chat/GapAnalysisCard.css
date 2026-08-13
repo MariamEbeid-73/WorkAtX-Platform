@@ -137,6 +137,33 @@
     border: 1px solid rgba(96, 165, 250, 0.3);
 }
 
+.gap-card__badge--blocking {
+    color: #ffffff;
+    background: rgba(220, 38, 38, 0.85);
+    border: 1px solid rgba(220, 38, 38, 0.9);
+}
+
+.gap-card__badge--depth {
+    color: #A78BFA;
+    background: rgba(124, 58, 237, 0.15);
+    border: 1px solid rgba(124, 58, 237, 0.3);
+}
+
+.gap-card__missing-row--blocking {
+    background: rgba(220, 38, 38, 0.06);
+}
+
+.gap-card__leverage-row,
+.gap-card__insight-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+}
+
 .gap-card__collapse {
     background: transparent !important;
     border: none !important;
