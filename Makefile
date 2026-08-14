@@ -1,4 +1,4 @@
-.PHONY: setup run down build deploy rollback logs logs-follow logs-services logs-failures logs-failure logs-bundle deploy-status vm-ssh
+.PHONY: setup run down build deploy rollback logs logs-follow logs-services logs-failures logs-failure logs-bundle jobs-status deploy-status vm-ssh
 
 setup:
 	command -v docker >/dev/null 2>&1 || { echo "Docker is required." >&2; exit 1; }
@@ -41,6 +41,9 @@ logs-failure:
 
 logs-bundle:
 	@./scripts/collect_logs.sh
+
+jobs-status:
+	@./scripts/jobs_status.sh
 
 deploy-status:
 	@./scripts/deploy_status.sh
