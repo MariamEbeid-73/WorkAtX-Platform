@@ -94,7 +94,7 @@ services:
       S3__AccessKey: "${AWS_ACCESS_KEY_ID:-minioadmin}"
       S3__SecretKey: "${AWS_SECRET_ACCESS_KEY:-minioadmin}"
       S3__Region: "${AWS_REGION:-us-east-1}"
-      OAuth__GitHub__ClientId: "${GITHUB_CLIENT_ID:-Ov23liacWpZf9ZDCpiGt}"
+      OAuth__GitHub__ClientId: "${GITHUB_CLIENT_ID:?GITHUB_CLIENT_ID is required}"
       # No committed fallback for real secrets — a missing value must fail
       # loud (docker compose's ${VAR:?msg} syntax), not silently fall back to
       # a value that used to sit here in plaintext. See INTEGRATION-REPORT.md:
@@ -103,7 +103,7 @@ services:
       # should be treated as compromised — rotate them, this fix alone does
       # not un-leak history that's already pushed.
       OAuth__GitHub__ClientSecret: "${GITHUB_CLIENT_SECRET:?Set GITHUB_CLIENT_SECRET in .env — do not reuse the value formerly hardcoded here, rotate it}"
-      OAuth__GitHub__RedirectUri: "http://localhost:5000/oauth/github/callback"
+      OAuth__GitHub__RedirectUri: "${GITHUB_REDIRECT_URI:-http://localhost:5000/oauth/github/callback}"
       OAuth__FrontendCallbackUrl: "${FRONTEND_URL:-http://localhost:4200}/oauth-return"
       Encryption__Key: "${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in .env (openssl rand -base64 32) — do not reuse the value formerly hardcoded here, rotate it}"
       Redis__Configuration: "redis:6379,abortConnect=false"
