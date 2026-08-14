@@ -23,11 +23,31 @@ export function getJobResult(
 }
 
 const POLL_INTERVAL_MS = 1500;
+const MAX_POLL_RETRY_DELAY_MS = 15_000;
 // A cold role scrape can run for more than ten minutes, and transient
 // connection failures can still consume multiple worker attempts. Keep the
 // browser resumable for the full retry envelope instead of timing out shortly
 // before a valid result is persisted.
 const POLL_TIMEOUT_MS = 90 * 60 * 1000;
+
+function waitForNextPoll(delayMs: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Polling aborted", "AbortError"));
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, delayMs);
+    const abort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Polling aborted", "AbortError"));
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
 
 function toJobStatusUpdate(status: JobStatusDto): JobStatusUpdate {
   return {
@@ -52,15 +72,53 @@ export async function pollJobUntilDone(
   opts?: {
     signal?: AbortSignal;
     onProgress?: (u: JobStatusUpdate) => void;
+    getToken?: () => Promise<string | null>;
   },
 ): Promise<JobStatusDto> {
   const start = Date.now();
+  let activeToken = token;
+  let consecutiveFailures = 0;
 
   while (true) {
     if (opts?.signal?.aborted) {
       throw new DOMException("Polling aborted", "AbortError");
     }
-    const status = await getJobStatus(token, jobId);
+
+    let status: JobStatusDto;
+    try {
+      status = await getJobStatus(activeToken, jobId);
+      consecutiveFailures = 0;
+    } catch (error) {
+      if (opts?.signal?.aborted) {
+        throw new DOMException("Polling aborted", "AbortError");
+      }
+      if (Date.now() - start > POLL_TIMEOUT_MS) {
+        throw new Error(
+          `Could not confirm the assistant's final status: ${
+            error instanceof Error ? error.message : "status request failed"
+          }`,
+        );
+      }
+
+      // Long-running jobs can outlive the token used to dispatch them. A
+      // failed status check is not evidence that the AI job failed: refresh
+      // authentication when possible, then retry with capped backoff.
+      try {
+        const refreshedToken = await opts?.getToken?.();
+        if (refreshedToken) activeToken = refreshedToken;
+      } catch {
+        // The next status attempt remains authoritative. Keep the job pending.
+      }
+
+      consecutiveFailures += 1;
+      const retryDelay = Math.min(
+        POLL_INTERVAL_MS * 2 ** Math.min(consecutiveFailures - 1, 4),
+        MAX_POLL_RETRY_DELAY_MS,
+      );
+      await waitForNextPoll(retryDelay, opts?.signal);
+      continue;
+    }
+
     opts?.onProgress?.(toJobStatusUpdate(status));
     if (status.status === "completed" || status.status === "failed") {
       return status;
@@ -68,7 +126,7 @@ export async function pollJobUntilDone(
     if (Date.now() - start > POLL_TIMEOUT_MS) {
       throw new Error("Timed out waiting for the assistant to respond.");
     }
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    await waitForNextPoll(POLL_INTERVAL_MS, opts?.signal);
   }
 }
 
@@ -168,6 +226,7 @@ export async function waitForJobCompletion(
       pollJobUntilDone(token, jobId, {
         signal: pollController.signal,
         onProgress: opts.onProgress,
+        getToken,
       }).then(
         (status) => finish(() => resolve(status)),
         (error) => {

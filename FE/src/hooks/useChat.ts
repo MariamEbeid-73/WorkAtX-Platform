@@ -339,9 +339,8 @@ export function useChat() {
                 if (!disposed && activeSessionRef.current === sessionId) {
                     setSendError(friendlyError(err));
                     setMessages((prev) => prev.map((m) =>
-                        m.pending ? { ...m, pending: false, failed: true } : m
+                        m.pending ? { ...m, pendingStage: "Reconnecting…" } : m
                     ));
-                    setRestoredPendingJobs([]);
                 }
             } finally {
                 if (!disposed && activeSessionRef.current === sessionId) {
@@ -563,6 +562,7 @@ export function useChat() {
 
             const controller = new AbortController();
             pollAbortRef.current = controller;
+            let submittedJob: { jobId: string; sessionId: string } | null = null;
 
             try {
                 // Dispatches prompt to backend and creates/routes session context.
@@ -571,6 +571,7 @@ export function useChat() {
                     trimmed,
                     sessionIdAtSend
                 );
+                submittedJob = { jobId, sessionId };
 
                 setMessages((prev) => prev.map((m) =>
                     m.id === pendingMessageId ? { ...m, jobId } : m
@@ -604,9 +605,13 @@ export function useChat() {
                 });
 
                 if (finalStatus.status === "failed") {
-                    throw new Error(
-                        finalStatus.error ?? "The assistant failed to respond."
-                    );
+                    setSendError(finalStatus.error ?? "The assistant failed to respond.");
+                    setMessages((prev) => prev.map((m) =>
+                        m.id === pendingMessageId
+                            ? { ...m, pending: false, failed: true }
+                            : m
+                    ));
+                    return;
                 }
 
                 // Re-fetch authoritative database transcript and refresh list.
@@ -617,6 +622,27 @@ export function useChat() {
             } catch (err) {
                 if (err instanceof DOMException && err.name === "AbortError") return;
                 setSendError(friendlyError(err));
+
+                // Once the backend has accepted a job, a socket/poll/transcript
+                // fetch error says only that this browser lost contact. Keep
+                // the bubble pending and let the normal resume path reconcile
+                // the authoritative backend status instead of showing a false
+                // AI failure.
+                if (submittedJob) {
+                    const jobToResume = submittedJob;
+                    setMessages((prev) => prev.map((m) =>
+                        m.id === pendingMessageId
+                            ? { ...m, pendingStage: "Reconnecting…" }
+                            : m
+                    ));
+                    setRestoredPendingJobs((prev) =>
+                        prev.some(({ jobId }) => jobId === jobToResume.jobId)
+                            ? prev
+                            : [...prev, jobToResume]
+                    );
+                    return;
+                }
+
                 setMessages((prev) =>
                     prev.map((m) =>
                         m.id === pendingMessageId
