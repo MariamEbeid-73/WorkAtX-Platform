@@ -98,7 +98,7 @@ services:
       S3__PublicEndpoint: "${STAGING_API_URL:-https://api.workx-iti.com}"
       OAuth__GitHub__ClientId: "${GITHUB_CLIENT_ID:?GITHUB_CLIENT_ID is required}"
       OAuth__GitHub__ClientSecret: "${GITHUB_CLIENT_SECRET:?GITHUB_CLIENT_SECRET is required}"
-      OAuth__GitHub__RedirectUri: "${STAGING_API_URL:-https://api.workx-iti.com}/oauth/github/callback"
+      OAuth__GitHub__RedirectUri: "${GITHUB_REDIRECT_URI:-https://api.workx-iti.com/oauth/github/callback}"
       OAuth__FrontendCallbackUrl: "${STAGING_FRONTEND_URL:-https://workx-iti.com}/oauth-return"
       Encryption__Key: "${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}"
       Redis__Configuration: redis:6379,abortConnect=false

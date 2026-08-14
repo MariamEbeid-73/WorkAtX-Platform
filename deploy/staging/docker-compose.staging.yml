@@ -11,7 +11,7 @@ services:
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
       Cors__AllowedOrigins: "${STAGING_CORS_ORIGINS:-https://workx-iti.com}"
       OAuth__FrontendCallbackUrl: "${STAGING_FRONTEND_URL:-https://workx-iti.com}/oauth-return"
-      OAuth__GitHub__RedirectUri: "${STAGING_API_URL:-https://api.workx-iti.com}/oauth/github/callback"
+      OAuth__GitHub__RedirectUri: "${GITHUB_REDIRECT_URI:-https://api.workx-iti.com/oauth/github/callback}"
       S3__PublicEndpoint: "${STAGING_API_URL:-https://api.workx-iti.com}"
 
   fe:
