@@ -137,36 +137,67 @@ export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCard
         ([key]) => typeof roleInsight[key] === 'string' && (roleInsight[key] as string).trim().length > 0,
     );
 
+    // role_match is only present once the AI service ships it; absent means
+    // "direct" (every postings-based result before this field existed).
+    const isUnrelated = ga.role_match === 'unrelated';
+    const alsoOpenTitles = ga.also_open_titles ?? [];
+    const openRoleTitles = ga.open_role_titles ?? [];
+    const futureFit = ga.future_fit ?? [];
+    const closestOpenRole = ga.closest_open_role ?? null;
+    const targetCompany = ga.target_company || perJobMatchScores[0]?.company || 'this company';
+    const targetRole = ga.target_role || perJobMatchScores[0]?.role || 'this role';
+
     return (
         <div className="gap-card">
-            {/* ── Condensed header: score + one-line summary ────────────── */}
-            <Flex align="center" gap={14} className="gap-card__header">
-                <Progress
-                    type="circle"
-                    size={44}
-                    percent={ga.skill_coverage_across_all_jobs}
-                    strokeWidth={9}
-                    format={(pct) => <span style={{ fontSize: 11 }}>{pct}%</span>}
+            {/* ── Mismatch banner: no open posting in the requested job family ── */}
+            {isUnrelated ? (
+                <Alert
+                    type="warning"
+                    showIcon
+                    icon={<WarningOutlined />}
+                    message={`${targetCompany} doesn't currently have an open ${targetRole} role`}
+                    description={
+                        <Flex vertical gap={4}>
+                            {ga.mismatch_note && <Text>{ga.mismatch_note}</Text>}
+                            {openRoleTitles.length > 0 && (
+                                <Text type="secondary" style={{ fontSize: 12.5 }}>
+                                    Currently open at {targetCompany}: {openRoleTitles.join(', ')}
+                                </Text>
+                            )}
+                        </Flex>
+                    }
+                    className="gap-card__banner"
                 />
-                <Flex vertical gap={2} flex={1} style={{ minWidth: 0 }}>
-                    <Flex align="center" gap={8}>
-                        <Text style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: 14 }}>
-                            Gap analysis complete
+            ) : (
+                /* ── Condensed header: score + one-line summary ────────────── */
+                <Flex align="center" gap={14} className="gap-card__header">
+                    <Progress
+                        type="circle"
+                        size={44}
+                        percent={ga.skill_coverage_across_all_jobs}
+                        strokeWidth={9}
+                        format={(pct) => <span style={{ fontSize: 11 }}>{pct}%</span>}
+                    />
+                    <Flex vertical gap={2} flex={1} style={{ minWidth: 0 }}>
+                        <Flex align="center" gap={8}>
+                            <Text style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: 14 }}>
+                                Gap analysis complete
+                            </Text>
+                            {ga.evidence_confidence && (
+                                <Tooltip title="How confident the analysis is in its own verdicts, based on how much evidence backed them">
+                                    <span className={`gap-card__badge ${confidenceBadgeClass(ga.evidence_confidence)}`}>
+                                        {ga.evidence_confidence} confidence
+                                    </span>
+                                </Tooltip>
+                            )}
+                        </Flex>
+                        <Text style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
+                            {matchedSkills.length} matched · {ga.missing.length} gaps found
+                            {perJobMatchScores.length > 0 ? ` · ${ga.jobs_analyzed} jobs analyzed` : ''}
                         </Text>
-                        {ga.evidence_confidence && (
-                            <Tooltip title="How confident the analysis is in its own verdicts, based on how much evidence backed them">
-                                <span className={`gap-card__badge ${confidenceBadgeClass(ga.evidence_confidence)}`}>
-                                    {ga.evidence_confidence} confidence
-                                </span>
-                            </Tooltip>
-                        )}
                     </Flex>
-                    <Text style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
-                        {matchedSkills.length} matched · {ga.missing.length} gaps found
-                        {perJobMatchScores.length > 0 ? ` · ${ga.jobs_analyzed} jobs analyzed` : ''}
-                    </Text>
                 </Flex>
-            </Flex>
+            )}
 
             {ga.is_degraded && (
                 <Alert
@@ -245,6 +276,13 @@ export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCard
                         ))}
                     </Flex>
                 </div>
+            )}
+
+            {/* ── Also open (shortlisted-but-not-analyzed same-family postings) ── */}
+            {alsoOpenTitles.length > 0 && (
+                <Text type="secondary" style={{ fontSize: 12.5 }}>
+                    Also open at {targetCompany}: {alsoOpenTitles.join(', ')}
+                </Text>
             )}
 
             {/* ── Interactive Tech Choices ──────────────────────────────── */}
@@ -450,6 +488,65 @@ export function GapAnalysisCard({ result, onSubmitTechChoices }: GapAnalysisCard
                             <li key={i}>{p}</li>
                         ))}
                     </ul>
+                </div>
+            )}
+
+            {/* ── Why you fit here (company-grounded angle) ────────────────── */}
+            {ga.company_angle && (
+                <div className="gap-card__section">
+                    <Title level={5} className="gap-card__section-title">
+                        Why you fit here
+                    </Title>
+                    <Paragraph style={{ margin: 0, fontSize: 13 }}>{ga.company_angle}</Paragraph>
+                </div>
+            )}
+
+            {/* ── Closest open role (mismatch fallback only) ───────────────── */}
+            {closestOpenRole && (
+                <div className="gap-card__section">
+                    <Title level={5} className="gap-card__section-title">
+                        Closest thing they have open right now
+                    </Title>
+                    <div className="gap-card__leverage-row">
+                        {closestOpenRole.job_url ? (
+                            <a href={closestOpenRole.job_url} target="_blank" rel="noopener noreferrer">
+                                <Text style={{ fontSize: 13, fontWeight: 500 }}>{closestOpenRole.title}</Text>
+                            </a>
+                        ) : (
+                            <Text style={{ fontSize: 13, fontWeight: 500 }}>{closestOpenRole.title}</Text>
+                        )}
+                        {closestOpenRole.why_worth_a_look && (
+                            <Text type="secondary" style={{ fontSize: 12.5 }}>
+                                {closestOpenRole.why_worth_a_look}
+                            </Text>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ── Future fit (speculative, not currently posted) ───────────── */}
+            {futureFit.length > 0 && (
+                <div className="gap-card__section">
+                    <Title level={5} className="gap-card__section-title">
+                        Roles {targetCompany} might need next
+                    </Title>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                        Nothing like this is posted today — a read on where their business is
+                        likely headed, matched against what you already bring.
+                    </Text>
+                    <Flex vertical gap={8}>
+                        {futureFit.map((f, i) => (
+                            <div key={`${f.title}-${i}`} className="gap-card__leverage-row">
+                                <Text style={{ fontSize: 13, fontWeight: 500 }}>{f.title}</Text>
+                                <Text type="secondary" style={{ fontSize: 12.5 }}>
+                                    {f.why_this_company}
+                                </Text>
+                                <Text type="secondary" style={{ fontSize: 12.5 }}>
+                                    {f.fit_with_candidate}
+                                </Text>
+                            </div>
+                        ))}
+                    </Flex>
                 </div>
             )}
 

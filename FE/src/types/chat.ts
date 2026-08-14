@@ -57,6 +57,18 @@ export interface GapAnalysisRoleInsight {
     [key: string]: unknown;
 }
 
+export interface GapAnalysisFutureFit {
+    title: string;
+    why_this_company: string;
+    fit_with_candidate: string;
+}
+
+export interface GapAnalysisClosestOpenRole {
+    title: string;
+    job_url?: string | null;
+    why_worth_a_look?: string;
+}
+
 export interface GapAnalysisResult {
     gap_analysis: {
         per_job_match_scores: Array<{
@@ -95,6 +107,22 @@ export interface GapAnalysisResult {
         positioning?: string[];
         role_insight?: GapAnalysisRoleInsight;
         evidence_confidence?: 'high' | 'medium' | 'low';
+        // "direct" — the analyzed postings are genuinely the requested role.
+        // "unrelated" — real postings were scraped, but none are the same
+        //   job family as requested; mismatch_note/open_role_titles apply.
+        // "unknown" — nothing was scraped at all. Absent means "direct" —
+        //   older AI service payloads never set this field.
+        role_match?: 'direct' | 'unrelated' | 'unknown';
+        mismatch_note?: string;
+        open_role_titles?: string[];
+        // Same job family as requested but below the AI service's shortlist
+        // cutoff, so they weren't analyzed — direct path only.
+        also_open_titles?: string[];
+        future_fit?: GapAnalysisFutureFit[];
+        closest_open_role?: GapAnalysisClosestOpenRole | null;
+        target_role?: string;
+        target_company?: string;
+        company_angle?: string;
     };
     user_report: string;
     tech_choices: TechChoiceCategory[];
