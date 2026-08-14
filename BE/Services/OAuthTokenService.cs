@@ -17,6 +17,7 @@ public class OAuthTokenService : IOAuthTokenService
     private readonly IUserService _userService;
     private readonly IAesEncryptionService _encryption;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IConfiguration _config;
 
     public OAuthTokenService(
@@ -25,6 +26,7 @@ public class OAuthTokenService : IOAuthTokenService
         IUserService userService,
         IAesEncryptionService encryption,
         IHttpClientFactory httpClientFactory,
+        IHttpContextAccessor httpContextAccessor,
         IConfiguration config)
     {
         _db                 = db;
@@ -32,6 +34,7 @@ public class OAuthTokenService : IOAuthTokenService
         _userService        = userService;
         _encryption         = encryption;
         _httpClientFactory  = httpClientFactory;
+        _httpContextAccessor = httpContextAccessor;
         _config             = config;
     }
 
@@ -63,7 +66,7 @@ public class OAuthTokenService : IOAuthTokenService
     private string BuildGitHubAuthUrl(string state)
     {
         var clientId    = _config["OAuth:GitHub:ClientId"]    ?? throw new InvalidOperationException("OAuth:GitHub:ClientId missing");
-        var redirectUri = _config["OAuth:GitHub:RedirectUri"] ?? throw new InvalidOperationException("OAuth:GitHub:RedirectUri missing");
+        var redirectUri = GetGitHubRedirectUri();
 
         // Scopes: read:user = basic profile; user:email = email address
         return $"https://github.com/login/oauth/authorize" +
@@ -138,7 +141,7 @@ public class OAuthTokenService : IOAuthTokenService
     {
         var clientId     = _config["OAuth:GitHub:ClientId"]!;
         var clientSecret = _config["OAuth:GitHub:ClientSecret"]!;
-        var redirectUri  = _config["OAuth:GitHub:RedirectUri"]!;
+        var redirectUri  = GetGitHubRedirectUri();
 
         var client = _httpClientFactory.CreateClient();
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -166,6 +169,25 @@ public class OAuthTokenService : IOAuthTokenService
         var username = profileResponse.GetProperty("login").GetString();
 
         return (accessToken, null, null, username); // GitHub tokens don't expire or have refresh tokens
+    }
+
+    private string GetGitHubRedirectUri()
+    {
+        var httpContext = _httpContextAccessor.HttpContext;
+        if (httpContext != null)
+        {
+            var request = httpContext.Request;
+            var scheme = request.Headers["X-Forwarded-Proto"].FirstOrDefault();
+            var host = request.Headers["X-Forwarded-Host"].FirstOrDefault() ?? request.Host.Value;
+
+            if (!string.IsNullOrWhiteSpace(host))
+            {
+                return $"{(string.IsNullOrWhiteSpace(scheme) ? request.Scheme : scheme)}://{host}/oauth/github/callback";
+            }
+        }
+
+        return _config["OAuth:GitHub:RedirectUri"]
+            ?? throw new InvalidOperationException("OAuth:GitHub:RedirectUri missing");
     }
 
     // ── Connections & Disconnect ─────────────────────────────────────────────
